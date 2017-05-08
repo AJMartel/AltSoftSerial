@@ -25,7 +25,10 @@ void setup() {
   // Serial.println("AltSoftSerial Test Begin");
 
   AltSoftSerial5.begin(9600);
-  AltSoftSerial5.println("Hello World");
+  AltSoftSerial5.println("Hello World from 5");
+
+  AltSoftSerial4.begin(9600);
+  AltSoftSerial4.println("Hello World from 4");
 }
 
 uint8_t i = 0;
@@ -45,6 +48,11 @@ void loop() {
   if (AltSoftSerial5.available()) {
     c = AltSoftSerial5.read();
     AltSoftSerial5.print(c);
+  }
+
+  if (AltSoftSerial4.available()) {
+    c = AltSoftSerial4.read();
+    AltSoftSerial4.print(c);
   }
 
 //  altSerial.print(i++);

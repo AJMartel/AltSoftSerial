@@ -64,6 +64,9 @@ private:
 
 	volatile uint8_t tx_buffer[TX_BUFFER_SIZE];
 
+    volatile uint8_t input_capture_pin;
+    volatile uint8_t output_compare_A_pin;
+
     volatile uint8_t *TIMSKn;
     volatile uint8_t *TCCRnA;
     volatile uint8_t *TCCRnB;
@@ -87,7 +90,10 @@ private:
     volatile uint16_t *OCRnB;
 
 public:
-	AltSoftSerial(  volatile uint8_t *TIMSKn,
+	AltSoftSerial(  volatile uint8_t input_capture_pin,
+                    volatile uint8_t output_compare_A_pin,
+
+                    volatile uint8_t *TIMSKn,
                     volatile uint8_t *TCCRnA,
                     volatile uint8_t *TCCRnB,
                     uint8_t ICNCn,
@@ -108,6 +114,9 @@ public:
                     volatile uint16_t *ICRn,
                     volatile uint16_t *OCRnA,
                     volatile uint16_t *OCRnB) {
+
+    this->input_capture_pin = input_capture_pin;
+    this->output_compare_A_pin = output_compare_A_pin;
 
     this->TIMSKn = TIMSKn;
     this->TCCRnA = TCCRnA;
@@ -193,5 +202,7 @@ private:
 };
 
 extern AltSoftSerial AltSoftSerial5;
+extern AltSoftSerial AltSoftSerial4;
+
 
 #endif

@@ -87,9 +87,9 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 	}
 	ticks_per_bit = cycles_per_bit;
 	rx_stop_ticks = cycles_per_bit * 37 / 4;
-	pinMode(INPUT_CAPTURE_PIN, INPUT_PULLUP);
-	digitalWrite(OUTPUT_COMPARE_A_PIN, HIGH);
-	pinMode(OUTPUT_COMPARE_A_PIN, OUTPUT);
+	pinMode(input_capture_pin, INPUT_PULLUP);
+	digitalWrite(output_compare_A_pin, HIGH);
+	pinMode(output_compare_A_pin, OUTPUT);
 	rx_state = 0;
 	rx_buffer_head = 0;
 	rx_buffer_tail = 0;
@@ -349,7 +349,8 @@ void ftm0_isr(void)
 #define COMPARE_A_INTERRUPT		TIMER5_COMPA_vect
 #define COMPARE_B_INTERRUPT		TIMER5_COMPB_vect
 
-AltSoftSerial 	AltSoftSerial5(   
+AltSoftSerial 	AltSoftSerial5(  INPUT_CAPTURE_PIN,
+								 OUTPUT_COMPARE_A_PIN, 
 					 &TIMSK5,
                      &TCCR5A,
                      &TCCR5B,
@@ -385,4 +386,48 @@ ISR(COMPARE_B_INTERRUPT) {
 }
 
 /********************** For Timer4 **************************/
+#define ALTSS_USE_TIMER5
+#define INPUT_CAPTURE_PIN		    49 // receive
+#define OUTPUT_COMPARE_A_PIN		6 // transmit
+#define OUTPUT_COMPARE_B_PIN		7 // unusable PWM
+#define OUTPUT_COMPARE_C_PIN		8 // unusable PWM
 
+#define CAPTURE_INTERRUPT		TIMER4_CAPT_vect
+#define COMPARE_A_INTERRUPT		TIMER4_COMPA_vect
+#define COMPARE_B_INTERRUPT		TIMER4_COMPB_vect
+
+AltSoftSerial 	AltSoftSerial4(  INPUT_CAPTURE_PIN,
+								 OUTPUT_COMPARE_A_PIN, 
+					 &TIMSK4,
+                     &TCCR4A,
+                     &TCCR4B,
+                     ICNC4,
+                     CS40,
+                     CS41,
+                     CS42,
+                     COM4A1,
+                     COM4A0,
+                     ICES4,
+                     &TIFR4,
+                     ICF4,
+                     OCF4A,
+                     OCF4B,
+                     ICIE4,
+                     OCIE4A,
+                     OCIE4B,
+                     &TCNT4,
+                     &ICR4,
+                     &OCR4A,
+                     &OCR4B);
+
+ISR(COMPARE_A_INTERRUPT) {
+	AltSoftSerial4.compareAInterrupt_isr();
+}
+
+ISR(CAPTURE_INTERRUPT) {
+	AltSoftSerial4.compareInterrupt_isr();
+}
+
+ISR(COMPARE_B_INTERRUPT) {
+    AltSoftSerial4.compareBInterrupt_isr();
+}

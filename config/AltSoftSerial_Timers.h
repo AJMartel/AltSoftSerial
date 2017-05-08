@@ -75,31 +75,31 @@
   #define COMPARE_B_INTERRUPT		TIMER3_COMPB_vect
 
 
-#elif defined(ALTSS_USE_TIMER4)
-  #define CONFIG_TIMER_NOPRESCALE()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS40))
-  #define CONFIG_TIMER_PRESCALE_8()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS41))
-  #define CONFIG_TIMER_PRESCALE_256()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS42))
-  #define CONFIG_MATCH_NORMAL()		(TCCR4A = TCCR4A & ~((1<<COM4A1) | (1<<COM4A0)))
-  #define CONFIG_MATCH_TOGGLE()		(TCCR4A = (TCCR4A & ~(1<<COM4A1)) | (1<<COM4A0))
-  #define CONFIG_MATCH_CLEAR()		(TCCR4A = (TCCR4A | (1<<COM4A1)) & ~(1<<COM4A0))
-  #define CONFIG_MATCH_SET()		(TCCR4A = TCCR4A | ((1<<COM4A1) | (1<<COM4A0)))
-  #define CONFIG_CAPTURE_FALLING_EDGE()	(TCCR4B &= ~(1<<ICES4))
-  #define CONFIG_CAPTURE_RISING_EDGE()	(TCCR4B |= (1<<ICES4))
-  #define ENABLE_INT_INPUT_CAPTURE()	(TIFR4 = (1<<ICF4), TIMSK4 = (1<<ICIE4))
-  #define ENABLE_INT_COMPARE_A()	(TIFR4 = (1<<OCF4A), TIMSK4 |= (1<<OCIE4A))
-  #define ENABLE_INT_COMPARE_B()	(TIFR4 = (1<<OCF4B), TIMSK4 |= (1<<OCIE4B))
-  #define DISABLE_INT_INPUT_CAPTURE()	(TIMSK4 &= ~(1<<ICIE4))
-  #define DISABLE_INT_COMPARE_A()	(TIMSK4 &= ~(1<<OCIE4A))
-  #define DISABLE_INT_COMPARE_B()	(TIMSK4 &= ~(1<<OCIE4B))
-  #define GET_TIMER_COUNT()		(TCNT4)
-  #define GET_INPUT_CAPTURE()		(ICR4)
-  #define GET_COMPARE_A()		(OCR4A)
-  #define GET_COMPARE_B()		(OCR4B)
-  #define SET_COMPARE_A(val)		(OCR4A = (val))
-  #define SET_COMPARE_B(val)		(OCR4B = (val))
-  #define CAPTURE_INTERRUPT		TIMER4_CAPT_vect
-  #define COMPARE_A_INTERRUPT		TIMER4_COMPA_vect
-  #define COMPARE_B_INTERRUPT		TIMER4_COMPB_vect
+// #elif defined(ALTSS_USE_TIMER4)
+//   #define CONFIG_TIMER_NOPRESCALE()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS40))
+//   #define CONFIG_TIMER_PRESCALE_8()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS41))
+//   #define CONFIG_TIMER_PRESCALE_256()	(TIMSK4 = 0, TCCR4A = 0, TCCR4B = (1<<ICNC4) | (1<<CS42))
+//   #define CONFIG_MATCH_NORMAL()		(TCCR4A = TCCR4A & ~((1<<COM4A1) | (1<<COM4A0)))
+//   #define CONFIG_MATCH_TOGGLE()		(TCCR4A = (TCCR4A & ~(1<<COM4A1)) | (1<<COM4A0))
+//   #define CONFIG_MATCH_CLEAR()		(TCCR4A = (TCCR4A | (1<<COM4A1)) & ~(1<<COM4A0))
+//   #define CONFIG_MATCH_SET()		(TCCR4A = TCCR4A | ((1<<COM4A1) | (1<<COM4A0)))
+//   #define CONFIG_CAPTURE_FALLING_EDGE()	(TCCR4B &= ~(1<<ICES4))
+//   #define CONFIG_CAPTURE_RISING_EDGE()	(TCCR4B |= (1<<ICES4))
+//   #define ENABLE_INT_INPUT_CAPTURE()	(TIFR4 = (1<<ICF4), TIMSK4 = (1<<ICIE4))
+//   #define ENABLE_INT_COMPARE_A()	(TIFR4 = (1<<OCF4A), TIMSK4 |= (1<<OCIE4A))
+//   #define ENABLE_INT_COMPARE_B()	(TIFR4 = (1<<OCF4B), TIMSK4 |= (1<<OCIE4B))
+//   #define DISABLE_INT_INPUT_CAPTURE()	(TIMSK4 &= ~(1<<ICIE4))
+//   #define DISABLE_INT_COMPARE_A()	(TIMSK4 &= ~(1<<OCIE4A))
+//   #define DISABLE_INT_COMPARE_B()	(TIMSK4 &= ~(1<<OCIE4B))
+//   #define GET_TIMER_COUNT()		(TCNT4)
+//   #define GET_INPUT_CAPTURE()		(ICR4)
+//   #define GET_COMPARE_A()		(OCR4A)
+//   #define GET_COMPARE_B()		(OCR4B)
+//   #define SET_COMPARE_A(val)		(OCR4A = (val))
+//   #define SET_COMPARE_B(val)		(OCR4B = (val))
+//   #define CAPTURE_INTERRUPT		TIMER4_CAPT_vect
+//   #define COMPARE_A_INTERRUPT		TIMER4_COMPA_vect
+//   #define COMPARE_B_INTERRUPT		TIMER4_COMPB_vect
 
 
 // #elif defined(ALTSS_USE_TIMER5)
