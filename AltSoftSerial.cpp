@@ -349,7 +349,28 @@ void ftm0_isr(void)
 #define COMPARE_A_INTERRUPT		TIMER5_COMPA_vect
 #define COMPARE_B_INTERRUPT		TIMER5_COMPB_vect
 
-AltSoftSerial AltSoftSerial5;
+AltSoftSerial 	AltSoftSerial5(   
+					 &TIMSK5,
+                     &TCCR5A,
+                     &TCCR5B,
+                     ICNC5,
+                     CS50,
+                     CS51,
+                     CS52,
+                     COM5A1,
+                     COM5A0,
+                     ICES5,
+                     &TIFR5,
+                     ICF5,
+                     OCF5A,
+                     OCF5B,
+                     ICIE5,
+                     OCIE5A,
+                     OCIE5B,
+                     &TCNT5,
+                     &ICR5,
+                     &OCR5A,
+                     &OCR5B);
 
 ISR(COMPARE_A_INTERRUPT) {
 	AltSoftSerial5.compareAInterrupt_isr();
