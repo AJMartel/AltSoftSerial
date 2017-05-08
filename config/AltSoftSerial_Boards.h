@@ -116,7 +116,7 @@
  //#define OUTPUT_COMPARE_C_PIN		 8 // unusable PWM
 
  #define ALTSS_USE_TIMER5
- #define INPUT_CAPTURE_PIN		48 // receive
+ #define INPUT_CAPTURE_PIN		    48 // receive
  #define OUTPUT_COMPARE_A_PIN		46 // transmit
  #define OUTPUT_COMPARE_B_PIN		45 // unusable PWM
  #define OUTPUT_COMPARE_C_PIN		44 // unusable PWM

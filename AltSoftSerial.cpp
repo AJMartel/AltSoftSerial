@@ -39,26 +39,8 @@
 /**          Initialization            **/
 /****************************************/
 
-static uint16_t ticks_per_bit=0;
+
 bool AltSoftSerial::timing_error=false;
-
-static uint8_t rx_state;
-static uint8_t rx_byte;
-static uint8_t rx_bit = 0;
-static uint16_t rx_target;
-static uint16_t rx_stop_ticks=0;
-static volatile uint8_t rx_buffer_head;
-static volatile uint8_t rx_buffer_tail;
-#define RX_BUFFER_SIZE 80
-static volatile uint8_t rx_buffer[RX_BUFFER_SIZE];
-
-static volatile uint8_t tx_state=0;
-static uint8_t tx_byte;
-static uint8_t tx_bit;
-static volatile uint8_t tx_buffer_head;
-static volatile uint8_t tx_buffer_tail;
-#define TX_BUFFER_SIZE 68
-static volatile uint8_t tx_buffer[TX_BUFFER_SIZE];
 
 
 #ifndef INPUT_PULLUP
@@ -69,6 +51,10 @@ static volatile uint8_t tx_buffer[TX_BUFFER_SIZE];
 
 void AltSoftSerial::init(uint32_t cycles_per_bit)
 {
+	rx_bit = 0;
+	rx_stop_ticks = 0;
+	tx_state = 0;
+
 	//Serial.printf("cycles_per_bit = %d\n", cycles_per_bit);
 	if (cycles_per_bit < MAX_COUNTS_PER_BIT) {
 		CONFIG_TIMER_NOPRESCALE();
@@ -152,7 +138,7 @@ void AltSoftSerial::writeByte(uint8_t b)
 }
 
 
-ISR(COMPARE_A_INTERRUPT)
+void AltSoftSerial::compareAInterrupt_isr()
 {
 	uint8_t state, byte, bit, head, tail;
 	uint16_t target;
@@ -219,7 +205,9 @@ void AltSoftSerial::flushOutput(void)
 /**            Reception               **/
 /****************************************/
 
-ISR(CAPTURE_INTERRUPT)
+
+
+void AltSoftSerial::compareInterrupt_isr()
 {
 	uint8_t state, bit, head;
 	uint16_t capture, target;
@@ -272,7 +260,9 @@ ISR(CAPTURE_INTERRUPT)
 	//if (GET_TIMER_COUNT() - capture > ticks_per_bit) AltSoftSerial::timing_error = true;
 }
 
-ISR(COMPARE_B_INTERRUPT)
+
+
+void AltSoftSerial::compareBInterrupt_isr()
 {
 	uint8_t head, state, bit;
 
@@ -347,4 +337,31 @@ void ftm0_isr(void)
 	if (flags & (1<<6) && (FTM0_C6SC & 0x40)) altss_compare_a_interrupt();
 }
 #endif
+
+/********************** For Timer5 **************************/
+#define ALTSS_USE_TIMER5
+#define INPUT_CAPTURE_PIN		    48 // receive
+#define OUTPUT_COMPARE_A_PIN		46 // transmit
+#define OUTPUT_COMPARE_B_PIN		45 // unusable PWM
+#define OUTPUT_COMPARE_C_PIN		44 // unusable PWM
+
+#define CAPTURE_INTERRUPT		TIMER5_CAPT_vect
+#define COMPARE_A_INTERRUPT		TIMER5_COMPA_vect
+#define COMPARE_B_INTERRUPT		TIMER5_COMPB_vect
+
+AltSoftSerial AltSoftSerial5;
+
+ISR(COMPARE_A_INTERRUPT) {
+	AltSoftSerial5.compareAInterrupt_isr();
+}
+
+ISR(CAPTURE_INTERRUPT) {
+	AltSoftSerial5.compareInterrupt_isr();
+}
+
+ISR(COMPARE_B_INTERRUPT) {
+    AltSoftSerial5.compareBInterrupt_isr();
+}
+
+/********************** For Timer4 **************************/
 
