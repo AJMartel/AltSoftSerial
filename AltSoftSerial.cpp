@@ -86,10 +86,10 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 		}
 	}
 	ticks_per_bit = cycles_per_bit;
-	rx_stop_ticks = cycles_per_bit * 37 / 4;
-	pinMode(input_capture_pin, INPUT_PULLUP);
-	digitalWrite(output_compare_A_pin, HIGH);
-	pinMode(output_compare_A_pin, OUTPUT);
+	rx_stop_ticks = cycles_per_bit * 37 / 4; // 9 bit time (time from start of start bit to start of stop bit)
+	pinMode(_input_capture_pin, INPUT_PULLUP);
+	digitalWrite(_output_compare_A_pin, HIGH);
+	pinMode(_output_compare_A_pin, OUTPUT);
 	rx_state = 0;
 	rx_buffer_head = 0;
 	rx_buffer_tail = 0;
@@ -116,14 +116,21 @@ void AltSoftSerial::end(void)
 
 void AltSoftSerial::writeByte(uint8_t b)
 {
+	/* New data is entered at head, old data is transmitted from tail side 
+	 * tx_buffer_head points to position, where there is valid data */
 	uint8_t intr_state, head;
 
 	head = tx_buffer_head + 1;
 	if (head >= TX_BUFFER_SIZE) head = 0;
+
+	/* Let all the previous data get transmitted */
 	while (tx_buffer_tail == head) ; // wait until space in buffer
+
+	/* Critical section
+	 * tx_state, tx_byte, tx_bit are modified in compareAInterrupt_isr() */
 	intr_state = SREG;
 	cli();
-	if (tx_state) {
+	if (tx_state) {  // some byte is already being transmitted
 		tx_buffer[head] = b;
 		tx_buffer_head = head;
 	} else {
@@ -137,30 +144,45 @@ void AltSoftSerial::writeByte(uint8_t b)
 	SREG = intr_state;
 }
 
+/*  The interrupts have priority in accordance with their Interrupt Vector position. 
+The lower the Interrupt Vector address, the higher the priority.  
+
+The priority interrupt for is capture interrupt (highest priority), compare A interrupt, 
+capture B interrupt (lowest priority)  */
 
 void AltSoftSerial::compareAInterrupt_isr()
 {
 	uint8_t state, byte, bit, head, tail;
 	uint16_t target;
 
-	state = tx_state;
-	byte = tx_byte;
-	target = GET_COMPARE_A();
-	while (state < 10) {
-		target += ticks_per_bit;
-		if (state < 9)
-			bit = byte & 1;
+	/* Byte format is 1 start bit, 8 data bit, no parity bit, 1 stop bit */
+	state = tx_state;  // the number of bits already transmitted
+	byte = tx_byte;    // the byte to be transmitted
+
+	target = GET_COMPARE_A();  // note down the timer value when this isr is invoked
+
+	while (state < 10) {  // if byte has not been fully transmitted yet
+
+		target += ticks_per_bit; // value for setting OCRA register to cause this interrupt 
+		                         // to occur after 1 bit time
+		
+		if (state < 9) // if not all data-bits are transmitted
+			bit = byte & 1;  // get the bit to be transmitted after 1 bit time
 		else
 			bit = 1; // stopbit
 		byte >>= 1;
 		state++;
+
+		// if next bit is same as current bit, then there is no need to this interrupt
+		// after 1 bit time. Find which next bit is different from current one, and set the isr
+		// to fire at that time.
 		if (bit != tx_bit) {
 			if (bit) {
-				CONFIG_MATCH_SET();
+				CONFIG_MATCH_SET();   // set tx pin to high when timer value matches OCRA value
 			} else {
-				CONFIG_MATCH_CLEAR();
+				CONFIG_MATCH_CLEAR(); // set tx pin to low when timer value matches OCRA value
 			}
-			SET_COMPARE_A(target);
+			SET_COMPARE_A(target); 
 			tx_bit = bit;
 			tx_byte = byte;
 			tx_state = state;
@@ -169,7 +191,7 @@ void AltSoftSerial::compareAInterrupt_isr()
 		}
 	}
 	head = tx_buffer_head;
-	tail = tx_buffer_tail;
+	tail = tx_buffer_tail;  // the byte currently being transmiited or already transmitted
 	if (head == tail) {
 		if (state == 10) {
 			// Wait for final stop bit to finish
@@ -177,17 +199,17 @@ void AltSoftSerial::compareAInterrupt_isr()
 			SET_COMPARE_A(target + ticks_per_bit);
 		} else {
 			tx_state = 0;
-			CONFIG_MATCH_NORMAL();
+			CONFIG_MATCH_NORMAL();   // do nothing on output pin on compare match
 			DISABLE_INT_COMPARE_A();
 		}
 	} else {
 		if (++tail >= TX_BUFFER_SIZE) tail = 0;
 		tx_buffer_tail = tail;
 		tx_byte = tx_buffer[tail];
-		tx_bit = 0;
+		tx_bit = 0; // start bit
 		CONFIG_MATCH_CLEAR();
 		if (state == 10)
-			SET_COMPARE_A(target + ticks_per_bit);
+			SET_COMPARE_A(target + ticks_per_bit);  // wait for stop bit com finish
 		else
 			SET_COMPARE_A(GET_TIMER_COUNT() + 16);
 		tx_state = 1;
@@ -205,14 +227,20 @@ void AltSoftSerial::flushOutput(void)
 /**            Reception               **/
 /****************************************/
 
+/* Reception used 2 ISRs: captureInterrupt_isr() and compareBInterrupt_isr().
+ * These 2 ISRs don't preempt each other as they are designed to called at 
+ * different times. */
 
-
-void AltSoftSerial::compareInterrupt_isr()
+/* This isr is called at start of start bit and at time when level change happens
+ * during reception of 10 bits. */
+void AltSoftSerial::captureInterrupt_isr()
 {
 	uint8_t state, bit, head;
 	uint16_t capture, target;
 	uint16_t offset, offset_overflow;
 
+	/* When the interrupt occurs, the value of timer count TCNT register is written to
+	 * ICR register. Read the contents of that register */
 	capture = GET_INPUT_CAPTURE();
 	bit = rx_bit;
 	if (bit) {
@@ -223,12 +251,12 @@ void AltSoftSerial::compareInterrupt_isr()
 		rx_bit = 0x80;
 	}
 	state = rx_state;
-	if (state == 0) {
+	if (state == 0) { // start of start bit
 		if (!bit) {
 			uint16_t end = capture + rx_stop_ticks;
 			SET_COMPARE_B(end);
 			ENABLE_INT_COMPARE_B();
-			rx_target = capture + ticks_per_bit + ticks_per_bit/2;
+			rx_target = capture + ticks_per_bit + ticks_per_bit/2; // middle of 1st data bit
 			rx_state = 1;
 		}
 	} else {
@@ -260,8 +288,7 @@ void AltSoftSerial::compareInterrupt_isr()
 	//if (GET_TIMER_COUNT() - capture > ticks_per_bit) AltSoftSerial::timing_error = true;
 }
 
-
-
+/* This function is called at start of stop bit if 8th data bit is not 1 */
 void AltSoftSerial::compareBInterrupt_isr()
 {
 	uint8_t head, state, bit;
@@ -269,7 +296,7 @@ void AltSoftSerial::compareBInterrupt_isr()
 	DISABLE_INT_COMPARE_B();
 	CONFIG_CAPTURE_FALLING_EDGE();
 	state = rx_state;
-	bit = rx_bit ^ 0x80;
+	bit = rx_bit ^ 0x80; // invert the rx_bit
 	while (state < 9) {
 		rx_byte = (rx_byte >> 1) | bit;
 		state++;
@@ -291,8 +318,13 @@ int AltSoftSerial::read(void)
 {
 	uint8_t head, tail, out;
 
-	head = rx_buffer_head;
-	tail = rx_buffer_tail;
+	/* Store value of rx_buffer_head in temporary variable instead of using 
+	   rx_buffer_head at multiple places inside the fxn because its value might
+	   be changed by one of the ISRs */
+
+	head = rx_buffer_head;  // can be changed by ISRs
+	tail = rx_buffer_tail;  // read by ISRs but not written by them
+
 	if (head == tail) return -1;
 	if (++tail >= RX_BUFFER_SIZE) tail = 0;
 	out = rx_buffer[tail];
@@ -337,97 +369,3 @@ void ftm0_isr(void)
 	if (flags & (1<<6) && (FTM0_C6SC & 0x40)) altss_compare_a_interrupt();
 }
 #endif
-
-/********************** For Timer5 **************************/
-#define ALTSS_USE_TIMER5
-#define INPUT_CAPTURE_PIN		    48 // receive
-#define OUTPUT_COMPARE_A_PIN		46 // transmit
-#define OUTPUT_COMPARE_B_PIN		45 // unusable PWM
-#define OUTPUT_COMPARE_C_PIN		44 // unusable PWM
-
-#define CAPTURE_INTERRUPT		TIMER5_CAPT_vect
-#define COMPARE_A_INTERRUPT		TIMER5_COMPA_vect
-#define COMPARE_B_INTERRUPT		TIMER5_COMPB_vect
-
-AltSoftSerial 	AltSoftSerial5(  INPUT_CAPTURE_PIN,
-								 OUTPUT_COMPARE_A_PIN, 
-					 &TIMSK5,
-                     &TCCR5A,
-                     &TCCR5B,
-                     ICNC5,
-                     CS50,
-                     CS51,
-                     CS52,
-                     COM5A1,
-                     COM5A0,
-                     ICES5,
-                     &TIFR5,
-                     ICF5,
-                     OCF5A,
-                     OCF5B,
-                     ICIE5,
-                     OCIE5A,
-                     OCIE5B,
-                     &TCNT5,
-                     &ICR5,
-                     &OCR5A,
-                     &OCR5B);
-
-ISR(COMPARE_A_INTERRUPT) {
-	AltSoftSerial5.compareAInterrupt_isr();
-}
-
-ISR(CAPTURE_INTERRUPT) {
-	AltSoftSerial5.compareInterrupt_isr();
-}
-
-ISR(COMPARE_B_INTERRUPT) {
-    AltSoftSerial5.compareBInterrupt_isr();
-}
-
-/********************** For Timer4 **************************/
-#define ALTSS_USE_TIMER5
-#define INPUT_CAPTURE_PIN		    49 // receive
-#define OUTPUT_COMPARE_A_PIN		6 // transmit
-#define OUTPUT_COMPARE_B_PIN		7 // unusable PWM
-#define OUTPUT_COMPARE_C_PIN		8 // unusable PWM
-
-#define CAPTURE_INTERRUPT		TIMER4_CAPT_vect
-#define COMPARE_A_INTERRUPT		TIMER4_COMPA_vect
-#define COMPARE_B_INTERRUPT		TIMER4_COMPB_vect
-
-AltSoftSerial 	AltSoftSerial4(  INPUT_CAPTURE_PIN,
-								 OUTPUT_COMPARE_A_PIN, 
-					 &TIMSK4,
-                     &TCCR4A,
-                     &TCCR4B,
-                     ICNC4,
-                     CS40,
-                     CS41,
-                     CS42,
-                     COM4A1,
-                     COM4A0,
-                     ICES4,
-                     &TIFR4,
-                     ICF4,
-                     OCF4A,
-                     OCF4B,
-                     ICIE4,
-                     OCIE4A,
-                     OCIE4B,
-                     &TCNT4,
-                     &ICR4,
-                     &OCR4A,
-                     &OCR4B);
-
-ISR(COMPARE_A_INTERRUPT) {
-	AltSoftSerial4.compareAInterrupt_isr();
-}
-
-ISR(CAPTURE_INTERRUPT) {
-	AltSoftSerial4.compareInterrupt_isr();
-}
-
-ISR(COMPARE_B_INTERRUPT) {
-    AltSoftSerial4.compareBInterrupt_isr();
-}
