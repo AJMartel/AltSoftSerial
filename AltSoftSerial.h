@@ -56,65 +56,89 @@ private:
 	volatile uint8_t rx_buffer_tail;
 	volatile uint8_t rx_buffer[RX_BUFFER_SIZE];
 
-	volatile uint8_t tx_state; // number of bits already transmitted
+	volatile uint8_t tx_state; // If 0: nothing to transmit
+                             // If 1 to 11, number of bits that would have been transmitted before next call 
+                             // to compareAInterrupt_isr() is made.
+                             // any other value is not possible
+
 	uint8_t tx_byte; // the byte currently begin tranmitted (right shift by tx_state bits)
-	uint8_t tx_bit; // the value of bit to transmitted next time compareAInterrupt_isr() is called
+	uint8_t tx_bit;  // the value of bit to be transmitted next time compareAInterrupt_isr() is called
 
 	volatile uint8_t tx_buffer_head;
 	volatile uint8_t tx_buffer_tail;
 
 	volatile uint8_t tx_buffer[TX_BUFFER_SIZE];
 
-    volatile uint8_t _input_capture_pin;
-    volatile uint8_t _output_compare_A_pin;
+  uint8_t _input_capture_pin;
+  uint8_t _output_compare_A_pin;
 
-    volatile uint8_t *_TIMSKn;
-    volatile uint8_t *_TCCRnA;
-    volatile uint8_t *_TCCRnB;
-    uint8_t _ICNCn;
-    uint8_t _CSn0;
-    uint8_t _CSn1;
-    uint8_t _CSn2;
-    uint8_t _COMnA1;
-    uint8_t _COMnA0;
-    uint8_t _ICESn;
-    volatile uint8_t *_TIFRn;
-    uint8_t _ICFn;
-    uint8_t _OCFnA;
-    uint8_t _OCFnB;
-    uint8_t _ICIEn;
-    uint8_t _OCIEnA;
-    uint8_t _OCIEnB;
-    volatile uint16_t *_TCNTn;
-    volatile uint16_t *_ICRn;
-    volatile uint16_t *_OCRnA;
-    volatile uint16_t *_OCRnB;
+  /* Variables to store register addresses. n in the following variables refers to timer number. */
+  
+  volatile uint8_t *_TCCRnA;  // Timer/Counter control register A
+  volatile uint8_t *_TCCRnB;  // Timer/Counter control register B
+
+  /* Bit masks for several bits in above registers */
+  uint8_t _ICNCn;   // Input capture noise cancel in TCCRnB register
+  uint8_t _CSn0;    // Clock select in TCCRnB register
+  uint8_t _CSn1;    // Clock select in TCCRnB register
+  uint8_t _CSn2;    // Clock select in TCCRnB register
+  uint8_t _COMnA1;  // Compare Output Mode in TCCRnA register
+  uint8_t _COMnA0;  // Compare Output Mode in TCCRnA register
+  uint8_t _ICESn;   // Input Capture Edge select
+
+
+  volatile uint8_t *_TIFRn; // Timer/Counter Interrupt Flag register
+
+  /* Bit masks for several bits in TIFR register */
+  uint8_t _ICFn;    // Input capture flag
+  uint8_t _OCFnA;   // Output compare A match flag
+  uint8_t _OCFnB;   // output compare B match flag
+
+  volatile uint8_t *_TIMSKn;  // Timer interrupt mask register
+
+  /* Bit masks for several bits in TIMSK register */
+  uint8_t _ICIEn;   // Input capture interrupt enable
+  uint8_t _OCIEnA;  // Output Compare A Match Interrupt Enable
+  uint8_t _OCIEnB;  // Output Compare B Match Interrupt Enable
+  
+  volatile uint16_t *_TCNTn;  // Timer/Counter Counter Value
+  volatile uint16_t *_ICRn;   // Input capture register
+  volatile uint16_t *_OCRnA;  // Output compare register A
+  volatile uint16_t *_OCRnB;  // Output compare register B
+
+  bool _useICP;
 
 public:
-	AltSoftSerial(  volatile uint8_t input_capture_pin,
-                    volatile uint8_t output_compare_A_pin,
 
-                    volatile uint8_t *TIMSKn,
-                    volatile uint8_t *TCCRnA,
-                    volatile uint8_t *TCCRnB,
-                    uint8_t ICNCn,
-                    uint8_t CSn0,
-                    uint8_t CSn1,
-                    uint8_t CSn2,
-                    uint8_t COMnA1,
-                    uint8_t COMnA0,
-                    uint8_t ICESn,
-                    volatile uint8_t *TIFRn,
-                    uint8_t ICFn,
-                    uint8_t OCFnA,
-                    uint8_t OCFnB,
-                    uint8_t ICIEn,
-                    uint8_t OCIEnA,
-                    uint8_t OCIEnB,
-                    volatile uint16_t *TCNTn,
-                    volatile uint16_t *ICRn,
-                    volatile uint16_t *OCRnA,
-                    volatile uint16_t *OCRnB) {
+  // TODO: Change the constructor to take only one argument instead of two separate arguments 
+  // input_capture_pin and nonICPPin
+	AltSoftSerial(  uint8_t input_capture_pin,     // rx pin
+                  uint8_t output_compare_A_pin,  // tx pin
+
+                  volatile uint8_t *TIMSKn,
+                  volatile uint8_t *TCCRnA,
+                  volatile uint8_t *TCCRnB,
+                  uint8_t ICNCn,
+                  uint8_t CSn0,
+                  uint8_t CSn1,
+                  uint8_t CSn2,
+                  uint8_t COMnA1,
+                  uint8_t COMnA0,
+                  uint8_t ICESn,
+                  volatile uint8_t *TIFRn,
+                  uint8_t ICFn,
+                  uint8_t OCFnA,
+                  uint8_t OCFnB,
+                  uint8_t ICIEn,
+                  uint8_t OCIEnA,
+                  uint8_t OCIEnB,
+                  volatile uint16_t *TCNTn,
+                  volatile uint16_t *ICRn,
+                  volatile uint16_t *OCRnA,
+                  volatile uint16_t *OCRnB,
+
+                  bool useICP = true,         // true if rx is ICP pin
+                  uint8_t nonICPPin = 0) { // to be used if rx is not ICP pin
 
     _input_capture_pin = input_capture_pin;
     _output_compare_A_pin = output_compare_A_pin;
@@ -140,17 +164,23 @@ public:
     _ICRn = ICRn;
     _OCRnA = OCRnA;
     _OCRnB = OCRnB;
+
+    _useICP = useICP;
     }
+
 	~AltSoftSerial() { end(); }
 
 	/* static class refers to functions that can be called even if there is no instance
-	   of class. They can access only static data members  */
+	   of class. They can accessed only from static method members  */
 
+  /* Function similar to those that are present in Serial library */
 	void begin(uint32_t baud) { init((ALTSS_BASE_FREQ + baud / 2) / baud); }
 	void end();
 	int peek();
 	int read();
 	int available();
+
+  /* In older Arduino, flush() function flushed the input stream instead of output. */
 #if ARDUINO >= 100
 	size_t write(uint8_t byte) { writeByte(byte); return 1; }
 	void flush() { flushOutput(); }
@@ -158,10 +188,17 @@ public:
 	void write(uint8_t byte) { writeByte(byte); }
 	void flush() { flushInput(); }
 #endif
+
 	using Print::write;
+
+  /* Empties the receive buffer */
 	void flushInput();
+
+  /* Waits for all the data in the transmit buffer to transmit. It is blocking function. */
 	void flushOutput();
-	// for drop-in compatibility with NewSoftSerial, rxPin & txPin ignored
+
+	/* Following fxns are for drop-in compatibility with NewSoftSerial (now SoftwareSerial), rxPin & 
+  txPin ignored. They do nothing. */
 	AltSoftSerial(uint8_t rxPin, uint8_t txPin, bool inverse = false) { }
 	bool listen() { return false; }
 	bool isListening() { return true; }
@@ -170,8 +207,19 @@ public:
 	static void enable_timer0(bool enable) { }
 	static bool timing_error;
 
+  /* Rx is the input capture pin. Whenever edge is detected on the input capture pin, the interrupt
+  is generated. */
+
+  /* The following 3 functions are public but they should not be called by the user directly. They
+  are public so that they can be called from ISR (see file AltSoftSerial1.cpp) */
+
+  /* Invoked when Output Compare A interrupt is generated. Used for transmission. It is called  */
 	void compareAInterrupt_isr();
+
+  /* Used for reception */
 	void captureInterrupt_isr();
+
+  /* Invoked when Output Compare B interrupt is generated. Used for reception. */
 	void compareBInterrupt_isr();
 
 private:
@@ -182,26 +230,50 @@ private:
     void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
     void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
     void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
+    
     void CONFIG_MATCH_NORMAL()        { *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); }
     void CONFIG_MATCH_TOGGLE()        { *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); }
     void CONFIG_MATCH_CLEAR()         { *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0); }
     void CONFIG_MATCH_SET()           { *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0)); }
-    void CONFIG_CAPTURE_FALLING_EDGE()   { *_TCCRnB &= ~(1<<_ICESn); }
-    void CONFIG_CAPTURE_RISING_EDGE()    { *_TCCRnB |= (1<<_ICESn); }
-    void ENABLE_INT_INPUT_CAPTURE()      { *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); }
+
+    void CONFIG_CAPTURE_FALLING_EDGE()   { 
+        if(_useICP) *_TCCRnB &= ~(1<<_ICESn); 
+        else {
+            DISABLE_INT_INPUT_CAPTURE();
+            EICRA = (EICRA | (1<<ISC01)) & ~(1<<ISC00);
+            ENABLE_INT_INPUT_CAPTURE();
+        }
+    }
+
+    void CONFIG_CAPTURE_RISING_EDGE()    { 
+        if(_useICP) *_TCCRnB |= (1<<_ICESn); 
+        else {
+            DISABLE_INT_INPUT_CAPTURE();
+            EICRA = EICRA | ((1<<ISC01) | (1<<ISC00));
+            ENABLE_INT_INPUT_CAPTURE();
+        }
+    }
+
+    void ENABLE_INT_INPUT_CAPTURE()      { if(_useICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
+                                           else EIMSK = (1<<INT0);}
+
     void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
     void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
-    void DISABLE_INT_INPUT_CAPTURE()    { *_TIMSKn &= ~(1<<_ICIEn); }
+
+    void DISABLE_INT_INPUT_CAPTURE()    { if(_useICP) *_TIMSKn &= ~(1<<_ICIEn); 
+                                          else EIMSK &= ~(1<<INT0); }
+
     void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
     void DISABLE_INT_COMPARE_B()        { *_TIMSKn &= ~(1<<_OCIEnB); }
     uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
-    uint16_t GET_INPUT_CAPTURE()        { return *_ICRn; }
+
+    uint16_t GET_INPUT_CAPTURE()        { if(_useICP) return *_ICRn; else return *_TCNTn;}
+
     uint16_t GET_COMPARE_A()            { return *_OCRnA; }
     uint16_t GET_COMPARE_B()            { return *_OCRnB; }
     void SET_COMPARE_A(uint16_t val)	{ *_OCRnA = (val); }
     void SET_COMPARE_B(uint16_t val)	{ *_OCRnB = (val); }
 };
-
 
 
 
@@ -308,8 +380,10 @@ private:
 //
 #elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
+  extern AltSoftSerial AltSoftSerial1;
   extern AltSoftSerial AltSoftSerial4;
   extern AltSoftSerial AltSoftSerial5;
+  #define ALTSS_HAVE_TIMER1
   #define ALTSS_HAVE_TIMER4
   #define ALTSS_HAVE_TIMER5
 

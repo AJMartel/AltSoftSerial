@@ -29,6 +29,9 @@ void setup() {
 
   AltSoftSerial4.begin(9600);
   AltSoftSerial4.println("Hello World from 4");
+
+  AltSoftSerial1.begin(9600);
+  AltSoftSerial1.println("Hello World from 1");
 }
 
 uint8_t i = 0;
@@ -53,6 +56,11 @@ void loop() {
   if (AltSoftSerial4.available()) {
     c = AltSoftSerial4.read();
     AltSoftSerial4.print(c);
+  }
+
+  if (AltSoftSerial1.available()) {
+    c = AltSoftSerial1.read();
+    AltSoftSerial1.print(c);
   }
 
 //  altSerial.print(i++);

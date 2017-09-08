@@ -1,0 +1,66 @@
+
+
+AltSoftSerial library uses Timer interrupt with compare match (Compare A for transmission and compare B for reception).
+
+Timer0 does not has compare match functionality. Moreover Timer0 is used by functions by Time library which provides functions such as millis().
+
+Arduino Mega (Atmega 2560) has 6 timers. 2 are 8-bit and 4 are 16-bit
+
+Q: Does AltSoftSerial uses 8-bit or 16-bit library? Is 8-bit resolution enough for AltSoftSerial to function properly?
+
+Following is mentioned in examples/Echo/echo.ino
+// AltSoftSerial always uses these pins:
+//
+// Board          Transmit  Receive   PWM Unusable
+                  (Input    (Ouput
+                  Capture    Compare 
+                  Pin)       A Pin)
+// -----          --------  -------   ------------
+// Teensy 3.0 & 3.1  21        20         22
+// Teensy 2.0         9        10       (none)
+// Teensy++ 2.0      25         4       26, 27
+// Arduino Uno        9         8         10
+// Arduino Leonardo   5        13       (none)
+// Arduino Mega      
+             Timer4  49         6        7, 8
+             Timer5  46        48       44, 45
+
+// Wiring-S           5         6          4
+// Sanguino          13        14         12
+
+Q: Why transmit and receive pins are fixed? Can they be changed?
+A: The above pins are hard-coded in config/AltSoftSerial_Boards.h
+
+ That means they can probably be changed.
+
+ On further investigation, it is found that pins can NOT be changed. The pins are decided
+ by the timer. Each timer has 3 pins associate with it - Input Capture Pin, Output Compare A pin and Output Compare B pin.
+
+ Input capture pin is used as Rx and Ouput compare A pin is used as Tx.
+
+ Q: Is there a possibility of interrupt getting missed?
+ A: The ISR disables the interrupts for some time. It may be possible that other interrupt might be missed.
+
+ The library needs 3 types of interrupts:
+   1. Compare A Interrupt: Occurs when value of timer register TCNT equals OCRnA
+   2. Compare B Interrupt: Occurs when value of timer register TCNT equals OCRnB
+   3. Capture interrupt: Occur when there is change in level on input capture pin ICP
+
+ First interrupt is used for transmission.
+
+ Other 2 interrupts are used for reception.
+
+ What does cli() function does?
+
+Q: Does this library work with 8-bit timer, or it always needs 16-bit timers?
+A: Since Mega 8-bit timers don't have capture mode, they cannot be used for AltSoftSerial library
+All 4 16-bit timer have capture mode
+
+In Mega, Timer0 and Timer2 are 8-bit.
+and Timer1, 3, 4 are 16-bit.
+
+             ICPn          OCnA      OCnB    OCnC
+Timer 1    47 (PD4)      24 (PB6)11  25 (PB7)12   26 (PB7)13   
+Timer 3     9 (PE7)       5 (PE3)5   6 (PE4)2     7 (PE5)3
+Timer 4    35 (PL0)49      15 (PH3)6  16 (PH4)7   17 (PH5)8
+Timer 5    36 (PL1)48      38 (PL3)46  39 (PL4)45  40 (PL5)44

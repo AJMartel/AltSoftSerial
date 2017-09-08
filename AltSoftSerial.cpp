@@ -87,6 +87,7 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 	}
 	ticks_per_bit = cycles_per_bit;
 	rx_stop_ticks = cycles_per_bit * 37 / 4; // 9 bit time (time from start of start bit to start of stop bit)
+
 	pinMode(_input_capture_pin, INPUT_PULLUP);
 	digitalWrite(_output_compare_A_pin, HIGH);
 	pinMode(_output_compare_A_pin, OUTPUT);
@@ -136,7 +137,7 @@ void AltSoftSerial::writeByte(uint8_t b)
 	} else {
 		tx_state = 1;
 		tx_byte = b;
-		tx_bit = 0;
+		tx_bit = 0;		// Set next bit to be transmitted as low (start bit)
 		ENABLE_INT_COMPARE_A();
 		CONFIG_MATCH_CLEAR();
 		SET_COMPARE_A(GET_TIMER_COUNT() + 16);
@@ -147,19 +148,28 @@ void AltSoftSerial::writeByte(uint8_t b)
 /*  The interrupts have priority in accordance with their Interrupt Vector position. 
 The lower the Interrupt Vector address, the higher the priority.  
 
-The priority interrupt for is capture interrupt (highest priority), compare A interrupt, 
+The priority of interrupts is: capture interrupt (highest priority), compare A interrupt, 
 capture B interrupt (lowest priority)  */
 
+/* Called when timer matches the value in register OCRA. This happens at 3 occassions:
+	1. Start of first data bit
+	2. Toggling of tx pin (except for start of first data bit)
+	3. End of 2nd stop bit */
 void AltSoftSerial::compareAInterrupt_isr()
 {
 	uint8_t state, byte, bit, head, tail;
-	uint16_t target;
+	uint16_t target; // value of timer when tx pin has to be toggled
 
-	/* Byte format is 1 start bit, 8 data bit, no parity bit, 1 stop bit */
+	/* Byte format is 1 start bit, 8 data bit, no parity bit, 2 stop bits */
 	state = tx_state;  // the number of bits already transmitted
 	byte = tx_byte;    // the byte to be transmitted
 
-	target = GET_COMPARE_A();  // note down the timer value when this isr is invoked
+	target = GET_COMPARE_A();  // note down the timer value when this isr was invoked
+
+	/* 1. Find the next bit (data bit or stop bit) that is different from current bit.
+	   2. Get the timer value when the tx pin has to be toggled.
+	   3. Set the timer to generate compare A interrupt when toggle has to take place.
+	   4. Set the timer to toggle tx pin at approriate timer value */
 
 	while (state < 10) {  // if byte has not been fully transmitted yet
 
@@ -190,6 +200,13 @@ void AltSoftSerial::compareAInterrupt_isr()
 			return;
 		}
 	}
+
+	// Control reaches this point if 
+	//	- tx pin is not to be toggled till end of first stop bit (state = 10). This also means 
+	//    currently tx pin is High and Timer output compare pin would be set to MATCH_SET.
+	//  - we are at the end of 2nd stop bit (state = 11)
+
+
 	head = tx_buffer_head;
 	tail = tx_buffer_tail;  // the byte currently being transmiited or already transmitted
 	if (head == tail) {
@@ -227,7 +244,7 @@ void AltSoftSerial::flushOutput(void)
 /**            Reception               **/
 /****************************************/
 
-/* Reception used 2 ISRs: captureInterrupt_isr() and compareBInterrupt_isr().
+/* Reception uses 2 ISRs: captureInterrupt_isr() and compareBInterrupt_isr().
  * These 2 ISRs don't preempt each other as they are designed to called at 
  * different times. */
 
