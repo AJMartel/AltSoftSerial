@@ -32,8 +32,6 @@
 
 
 #include "AltSoftSerial.h"
-#include "config/AltSoftSerial_Boards.h"
-#include "config/AltSoftSerial_Timers.h"
 
 /****************************************/
 /**          Initialization            **/

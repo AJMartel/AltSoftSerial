@@ -42,6 +42,54 @@
 #define TX_BUFFER_SIZE 68
 #define RX_BUFFER_SIZE 80
 
+
+
+
+
+
+// Teensy 2.0
+//
+#if defined(__AVR_ATmega32U4__) && defined(CORE_TEENSY)
+  #define ALTSS_HAVE_TIMER1
+  #define ALTSS_HAVE_TIMER3
+
+// Teensy++ 2.0
+#elif defined(__AVR_AT90USB1286__) && defined(CORE_TEENSY)
+  #define ALTSS_HAVE_TIMER1
+  #define ALTSS_HAVE_TIMER3
+
+// Wiring-S
+#elif defined(__AVR_ATmega644P__) && defined(WIRING)
+  #define ALTSS_HAVE_TIMER1
+
+// Arduino Uno, Duemilanove, LilyPad, etc
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
+  #define ALTSS_HAVE_TIMER1
+
+// Arduino Leonardo & Yun (from Cristian Maglie)
+#elif defined(ARDUINO_AVR_YUN) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega32U4__)
+  #define ALTSS_HAVE_TIMER3
+
+// Arduino Mega
+#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+  #define ALTSS_HAVE_TIMER1
+  #define ALTSS_HAVE_TIMER4
+  #define ALTSS_HAVE_TIMER5
+
+// Sanguino
+#elif defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644__)
+  #define ALTSS_HAVE_TIMER1
+
+#else
+  #error "Please define your board"
+
+#endif
+
+
+
+
+
+
 class AltSoftSerial : public Stream
 {
 private:
@@ -75,28 +123,23 @@ private:
   /* Variables to store register addresses. n in the following variables refers to timer number. */
   
   volatile uint8_t *_TCCRnA;  // Timer/Counter control register A
-  volatile uint8_t *_TCCRnB;  // Timer/Counter control register B
+  uint8_t _COMnA1;  // Compare Output Mode in TCCRnA register
+  uint8_t _COMnA0;  // Compare Output Mode in TCCRnA register
 
-  /* Bit masks for several bits in above registers */
+  volatile uint8_t *_TCCRnB;  // Timer/Counter control register B
   uint8_t _ICNCn;   // Input capture noise cancel in TCCRnB register
   uint8_t _CSn0;    // Clock select in TCCRnB register
   uint8_t _CSn1;    // Clock select in TCCRnB register
   uint8_t _CSn2;    // Clock select in TCCRnB register
-  uint8_t _COMnA1;  // Compare Output Mode in TCCRnA register
-  uint8_t _COMnA0;  // Compare Output Mode in TCCRnA register
-  uint8_t _ICESn;   // Input Capture Edge select
+  uint8_t _ICESn;   // Input Capture Edge select in TCCRnB register
 
 
   volatile uint8_t *_TIFRn; // Timer/Counter Interrupt Flag register
-
-  /* Bit masks for several bits in TIFR register */
   uint8_t _ICFn;    // Input capture flag
   uint8_t _OCFnA;   // Output compare A match flag
   uint8_t _OCFnB;   // output compare B match flag
 
   volatile uint8_t *_TIMSKn;  // Timer interrupt mask register
-
-  /* Bit masks for several bits in TIMSK register */
   uint8_t _ICIEn;   // Input capture interrupt enable
   uint8_t _OCIEnA;  // Output Compare A Match Interrupt Enable
   uint8_t _OCIEnB;  // Output Compare B Match Interrupt Enable
@@ -110,60 +153,74 @@ private:
 
 public:
 
-  // TODO: Change the constructor to take only one argument instead of two separate arguments 
-  // input_capture_pin and nonICPPin
-	AltSoftSerial(  uint8_t input_capture_pin,     // rx pin
-                  uint8_t output_compare_A_pin,  // tx pin
+  /* n can vary from 0 to 5. 
+     All .h files are in hardware/tools/avr/avr/include/avr
+     Single .h file corresponds to single processor
+     Run the given command in above folder to verify
+   * Bitmasks:
+   *    ICNCn - For given processor, for all n, value is same. 
+   *            To verify: $ for f in *.h; do grep --with-filename ICNC $f;  echo ""; done;
+   *
+   *    CSn0 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]0" *.h;
+   *    CSn1 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]1" *.h;
+        CSn2 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]2" *.h;
 
-                  volatile uint8_t *TIMSKn,
-                  volatile uint8_t *TCCRnA,
-                  volatile uint8_t *TCCRnB,
-                  uint8_t ICNCn,
-                  uint8_t CSn0,
-                  uint8_t CSn1,
-                  uint8_t CSn2,
-                  uint8_t COMnA1,
-                  uint8_t COMnA0,
-                  uint8_t ICESn,
-                  volatile uint8_t *TIFRn,
-                  uint8_t ICFn,
-                  uint8_t OCFnA,
-                  uint8_t OCFnB,
-                  uint8_t ICIEn,
-                  uint8_t OCIEnA,
-                  uint8_t OCIEnB,
-                  volatile uint16_t *TCNTn,
-                  volatile uint16_t *ICRn,
-                  volatile uint16_t *OCRnA,
-                  volatile uint16_t *OCRnB,
+        COMnA1 - For given processor, value CAN BE different for different timers
+   *
+   */
 
-                  bool useICP = true,         // true if rx is ICP pin
-                  uint8_t nonICPPin = 0) { // to be used if rx is not ICP pin
+  /**  input_rx_pin: ICP pin of the timer if useICP is true, other other INT pin
+    */
+	AltSoftSerial(uint8_t rx_pin,     // rx pin
+                uint8_t output_compare_A_pin,  // tx pin
+                bool useICP = true,         // true if rx is ICP pin
+                uint8_t timerNum = 1) { // to be used if rx is not ICP pin
 
-    _input_capture_pin = input_capture_pin;
+
+    _input_capture_pin = rx_pin;
     _output_compare_A_pin = output_compare_A_pin;
+    
+    #if defined(ALTSS_HAVE_TIMER0)
+      if(timerNum == 0) {
+        _TCCRnA = &TCCR0A; _COMnA1 = COM0A1; _COMnA0 = COM0A0;
+        _TCCRnB = &TCCR0B; _ICNCn = ICNC0; _CSn0 = CS00; _CSn1 = CS01; _CSn2 = CS02; _ICESn = ICES0;
+        _TIFRn = &TIFR0; _ICFn = ICF0; _OCFnA = OCF0A; _OCFnB = OCF0B;
+        _TIMSKn = &TIMSK0; _ICIEn = ICIE0; _OCIEnA = OCIE0A; _OCIEnB = OCIE0B;
+        _TCNTn = &TCNT0;
+        _ICRn = &ICR0;
+        _OCRnA = &OCR0A;
+        _OCRnB = &OCR0B;
+      }
+    // #endif
 
-    _TIMSKn = TIMSKn;
-    _TCCRnA = TCCRnA;
-    _TCCRnB = TCCRnB;
-    _ICNCn = ICNCn;
-    _CSn0 = CSn0;
-    _CSn1 = CSn1;
-    _CSn2 = CSn2;
-    _COMnA1 = COMnA1;
-    _COMnA0 = COMnA0;
-    _ICESn = ICESn;
-    _TIFRn = TIFRn;
-    _ICFn = ICFn;
-    _OCFnA = OCFnA;
-    _OCFnB = OCFnB;
-    _ICIEn = ICIEn;
-    _OCIEnA = OCIEnA;
-    _OCIEnB = OCIEnB;
-    _TCNTn = TCNTn;
-    _ICRn = ICRn;
-    _OCRnA = OCRnA;
-    _OCRnB = OCRnB;
+    #elif defined(ALTSS_HAVE_TIMER1)
+      if(timerNum == 1) {
+        _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
+        _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
+        _TIFRn = &TIFR1; _ICFn = ICF1; _OCFnA = OCF1A; _OCFnB = OCF1B;
+        _TIMSKn = &TIMSK1; _ICIEn = ICIE1; _OCIEnA = OCIE1A; _OCIEnB = OCIE1B;
+        _TCNTn = &TCNT1;
+        _ICRn = &ICR1;
+        _OCRnA = &OCR1A;
+        _OCRnB = &OCR1B;
+      }
+    // #endif
+
+    #elif defined(ALTSS_HAVE_TIMER2)
+      if(timerNum == 2) {
+        _TCCRnA = &TCCR2A; _COMnA1 = COM2A1; _COMnA0 = COM2A0;
+        _TCCRnB = &TCCR2B; _ICNCn = ICNC2; _CSn0 = CS20; _CSn1 = CS21; _CSn2 = CS22; _ICESn = ICES2;
+        _TIFRn = &TIFR2; _ICFn = ICF2; _OCFnA = OCF2A; _OCFnB = OCF2B;
+        _TIMSKn = &TIMSK2; _ICIEn = ICIE2; _OCIEnA = OCIE2A; _OCIEnB = OCIE2B;
+        _TCNTn = &TCNT2;
+        _ICRn = &ICR2;
+        _OCRnA = &OCR2A;
+        _OCRnB = &OCR2B;
+      }
+    #else
+      #error "Ha!"
+    #endif
+
 
     _useICP = useICP;
     }
@@ -227,181 +284,52 @@ private:
 	void writeByte(uint8_t byte);
 
 
-    void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
-    void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
-    void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
-    
-    void CONFIG_MATCH_NORMAL()        { *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); }
-    void CONFIG_MATCH_TOGGLE()        { *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); }
-    void CONFIG_MATCH_CLEAR()         { *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0); }
-    void CONFIG_MATCH_SET()           { *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0)); }
+  void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
+  void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
+  void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
+  
+  void CONFIG_MATCH_NORMAL()        { *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); }
+  void CONFIG_MATCH_TOGGLE()        { *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); }
+  void CONFIG_MATCH_CLEAR()         { *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0); }
+  void CONFIG_MATCH_SET()           { *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0)); }
 
-    void CONFIG_CAPTURE_FALLING_EDGE()   { 
-        if(_useICP) *_TCCRnB &= ~(1<<_ICESn); 
-        else {
-            DISABLE_INT_INPUT_CAPTURE();
-            EICRA = (EICRA | (1<<ISC01)) & ~(1<<ISC00);
-            ENABLE_INT_INPUT_CAPTURE();
-        }
-    }
+  void CONFIG_CAPTURE_FALLING_EDGE()   { 
+      if(_useICP) *_TCCRnB &= ~(1<<_ICESn); 
+      else {
+          DISABLE_INT_INPUT_CAPTURE();
+          EICRA = (EICRA | (1<<ISC01)) & ~(1<<ISC00);
+          ENABLE_INT_INPUT_CAPTURE();
+      }
+  }
 
-    void CONFIG_CAPTURE_RISING_EDGE()    { 
-        if(_useICP) *_TCCRnB |= (1<<_ICESn); 
-        else {
-            DISABLE_INT_INPUT_CAPTURE();
-            EICRA = EICRA | ((1<<ISC01) | (1<<ISC00));
-            ENABLE_INT_INPUT_CAPTURE();
-        }
-    }
+  void CONFIG_CAPTURE_RISING_EDGE()    { 
+      if(_useICP) *_TCCRnB |= (1<<_ICESn); 
+      else {
+          DISABLE_INT_INPUT_CAPTURE();
+          EICRA = EICRA | ((1<<ISC01) | (1<<ISC00));
+          ENABLE_INT_INPUT_CAPTURE();
+      }
+  }
 
-    void ENABLE_INT_INPUT_CAPTURE()      { if(_useICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
-                                           else EIMSK = (1<<INT0);}
+  void ENABLE_INT_INPUT_CAPTURE()      { if(_useICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
+                                         else EIMSK = (1<<INT0);}
 
-    void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
-    void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
+  void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
+  void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
 
-    void DISABLE_INT_INPUT_CAPTURE()    { if(_useICP) *_TIMSKn &= ~(1<<_ICIEn); 
-                                          else EIMSK &= ~(1<<INT0); }
+  void DISABLE_INT_INPUT_CAPTURE()    { if(_useICP) *_TIMSKn &= ~(1<<_ICIEn); 
+                                        else EIMSK &= ~(1<<INT0); }
 
-    void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
-    void DISABLE_INT_COMPARE_B()        { *_TIMSKn &= ~(1<<_OCIEnB); }
-    uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
+  void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
+  void DISABLE_INT_COMPARE_B()        { *_TIMSKn &= ~(1<<_OCIEnB); }
+  uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
 
-    uint16_t GET_INPUT_CAPTURE()        { if(_useICP) return *_ICRn; else return *_TCNTn;}
+  uint16_t GET_INPUT_CAPTURE()        { if(_useICP) return *_ICRn; else return *_TCNTn;}
 
-    uint16_t GET_COMPARE_A()            { return *_OCRnA; }
-    uint16_t GET_COMPARE_B()            { return *_OCRnB; }
-    void SET_COMPARE_A(uint16_t val)	{ *_OCRnA = (val); }
+  uint16_t GET_COMPARE_A()            { return *_OCRnA; }
+  uint16_t GET_COMPARE_B()            { return *_OCRnB; }
+  void SET_COMPARE_A(uint16_t val)	{ *_OCRnA = (val); }
     void SET_COMPARE_B(uint16_t val)	{ *_OCRnB = (val); }
 };
-
-
-
-
-
-
-// Teensy 2.0
-//
-#if defined(__AVR_ATmega32U4__) && defined(CORE_TEENSY)
-  extern AltSoftSerial AltSoftSerial1;
-  extern AltSoftSerial AltSoftSerial3;
-  #define ALTSS_HAVE_TIMER1
-  #define ALTSS_HAVE_TIMER3
- //#define ALTSS_USE_TIMER1
- //#define INPUT_CAPTURE_PIN        22 // receive
- //#define OUTPUT_COMPARE_A_PIN     14 // transmit
- //#define OUTPUT_COMPARE_B_PIN     15 // unusable PWM
- //#define OUTPUT_COMPARE_C_PIN      4 // unusable PWM
-
- #define ALTSS_USE_TIMER3
- #define INPUT_CAPTURE_PIN      10 // receive
- #define OUTPUT_COMPARE_A_PIN        9 // transmit
-
-
-
-// Teensy++ 2.0
-//
-#elif defined(__AVR_AT90USB1286__) && defined(CORE_TEENSY)
-  extern AltSoftSerial AltSoftSerial1;
-  extern AltSoftSerial AltSoftSerial3;
-  #define ALTSS_HAVE_TIMER1
-  #define ALTSS_HAVE_TIMER3
-
- #define ALTSS_USE_TIMER1
- #define INPUT_CAPTURE_PIN       4 // receive
- #define OUTPUT_COMPARE_A_PIN       25 // transmit
- #define OUTPUT_COMPARE_B_PIN       26 // unusable PWM
- #define OUTPUT_COMPARE_C_PIN       27 // unusable PWM
-
- //#define ALTSS_USE_TIMER3
- //#define INPUT_CAPTURE_PIN        17 // receive
- //#define OUTPUT_COMPARE_A_PIN     16 // transmit
- //#define OUTPUT_COMPARE_B_PIN     15 // unusable PWM
- //#define OUTPUT_COMPARE_C_PIN     14 // unusable PWM
-
-
-// Teensy 3.x
-//
-// #elif defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__)
-//  #define ALTSS_USE_FTM0
-//  #define INPUT_CAPTURE_PIN      20 // receive       (FTM0_CH5)
-//  #define OUTPUT_COMPARE_A_PIN       21 // transmit      (FTM0_CH6)
-//  #define OUTPUT_COMPARE_B_PIN       22 // unusable PWM  (FTM0_CH0)
-//  #define OUTPUT_COMPARE_C_PIN       23 // PWM usable fixed freq
-//  #define OUTPUT_COMPARE_D_PIN        5 // PWM usable fixed freq
-//  #define OUTPUT_COMPARE_E_PIN        6 // PWM usable fixed freq
-//  #define OUTPUT_COMPARE_F_PIN        9 // PWM usable fixed freq
-//  #define OUTPUT_COMPARE_G_PIN       10 // PWM usable fixed freq
-
-
-// Wiring-S
-//
-#elif defined(__AVR_ATmega644P__) && defined(WIRING)
-  extern AltSoftSerial AltSoftSerial1;
-  #define ALTSS_HAVE_TIMER1
- #define ALTSS_USE_TIMER1
- // #define INPUT_CAPTURE_PIN       6 // receive
- // #define OUTPUT_COMPARE_A_PIN        5 // transmit
- // #define OUTPUT_COMPARE_B_PIN        4 // unusable PWM
-
-
-
-// Arduino Uno, Duemilanove, LilyPad, etc
-//
-#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
-  extern AltSoftSerial AltSoftSerial1;
-  #define ALTSS_HAVE_TIMER1
-
- #define ALTSS_USE_TIMER1
- #define INPUT_CAPTURE_PIN       8 // receive
- #define OUTPUT_COMPARE_A_PIN        9 // transmit
- #define OUTPUT_COMPARE_B_PIN       10 // unusable PWM
-
-
-// Arduino Leonardo & Yun (from Cristian Maglie)
-//
-#elif defined(ARDUINO_AVR_YUN) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega32U4__)
-
-  extern AltSoftSerial AltSoftSerial3;
-  #define ALTSS_HAVE_TIMER3
-
-  //#define ALTSS_USE_TIMER1
-  //#define INPUT_CAPTURE_PIN       4  // receive
-  //#define OUTPUT_COMPARE_A_PIN    9 // transmit
-  //#define OUTPUT_COMPARE_B_PIN    10 // unusable PWM
-  //#define OUTPUT_COMPARE_C_PIN    11 // unusable PWM
-
-  #define ALTSS_USE_TIMER3
-  #define INPUT_CAPTURE_PIN     13 // receive
-  #define OUTPUT_COMPARE_A_PIN      5 // transmit
-
-
-// Arduino Mega
-//
-#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-
-  extern AltSoftSerial AltSoftSerial1;
-  extern AltSoftSerial AltSoftSerial4;
-  extern AltSoftSerial AltSoftSerial5;
-  #define ALTSS_HAVE_TIMER1
-  #define ALTSS_HAVE_TIMER4
-  #define ALTSS_HAVE_TIMER5
-
-// Sanguino
-#elif defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644__)
-  
-  extern AltSoftSerial AltSoftSerial1;  
-  #define ALTSS_HAVE_TIMER1
-
- // #define ALTSS_USE_TIMER1
- // #define INPUT_CAPTURE_PIN      14 // receive
- // #define OUTPUT_COMPARE_A_PIN       13 // transmit
- // #define OUTPUT_COMPARE_B_PIN       12 // unusable PWM
-
-#else
-  #error "Please define your board"
-
-#endif
-
 
 #endif // AltSoftSerial_h
