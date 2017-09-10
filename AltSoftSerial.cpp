@@ -47,6 +47,76 @@ bool AltSoftSerial::timing_error=false;
 
 #define MAX_COUNTS_PER_BIT  6241  // 65536 / 10.5
 
+void AltSoftSerial::setICPPinAsRx(uint8_t rx_pin) {
+
+	_input_capture_pin = rx_pin;
+	_rxPinType = RX_PIN_TYPE_ICP;
+}
+
+void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin, uint8_t INT_pin_number) {
+
+	if(INT_pin_number == 0) {
+		_INTm = INT0;
+		_ISCm0 = ISC00;
+		_ISCm1 = ISC01;
+	}
+	else if (INT_pin_number == 1) {
+		_INTm = INT1;
+		_ISCm0 = ISC10;
+		_ISCm1 = ISC11;
+	}
+	else return;
+
+	_input_capture_pin = rx_pin;
+	_rxPinType = RX_PIN_TYPE_INT;
+}
+
+void AltSoftSerial::setPCINTPinAsRx(uint8_t rx_pin, uint8_t PCINT_pin_number) {
+
+	switch(PCINT_pin_number) {
+		case 0: _PCINTm = 0; break;
+		case 1: _PCINTm = 1; break;
+		case 2: _PCINTm = 2; break;
+		case 3: _PCINTm = 3; break;
+		case 4: _PCINTm = 4; break;
+		case 5: _PCINTm = 5; break;
+		case 6: _PCINTm = 6; break;
+		case 7: _PCINTm = 7; break;
+		case 8: _PCINTm = 8; break;
+		case 9: _PCINTm = 9; break;
+		case 10: _PCINTm = 10; break;
+		case 11: _PCINTm = 11; break;
+		case 12: _PCINTm = 12; break;
+		case 13: _PCINTm = 13; break;
+		case 14: _PCINTm = 14; break;
+		case 16: _PCINTm = 16; break; // PCINT15 missed intentionally
+		case 17: _PCINTm = 17; break;
+		case 18: _PCINTm = 18; break;
+		case 19: _PCINTm = 19; break;
+		case 20: _PCINTm = 20; break;
+		case 21: _PCINTm = 21; break;
+		case 22: _PCINTm = 22; break;
+		case 23: _PCINTm = 23; break;
+		default: return; break;
+	}
+
+	if(PCINT_pin_number <= 7) {
+		_PCIEx = PCIE0;
+		_PCMSKx = &PCMSK0;
+	}
+	else if(PCINT_pin_number <=14) {
+		_PCIEx = PCIE1;
+		_PCMSKx = &PCMSK1;
+	}
+	else {
+		_PCIEx = PCIE2;
+		_PCMSKx = &PCMSK2;
+	}
+
+	_input_capture_pin = rx_pin;
+	_rxPinType = RX_PIN_TYPE_PCINT;
+}
+
 void AltSoftSerial::init(uint32_t cycles_per_bit)
 {
 	rx_bit = 0;
@@ -95,7 +165,8 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 	tx_state = 0;
 	tx_buffer_head = 0;
 	tx_buffer_tail = 0;
-	ENABLE_INT_INPUT_CAPTURE();
+	CONFIG_CAPTURE_FALLING_EDGE()
+;	ENABLE_INT_INPUT_CAPTURE();
 }
 
 void AltSoftSerial::end(void)
@@ -250,6 +321,13 @@ void AltSoftSerial::flushOutput(void)
  * during reception of 10 bits. */
 void AltSoftSerial::captureInterrupt_isr()
 {
+
+	// Serial.print("EICRA: ");
+	// Serial.println(EICRA, HEX);
+
+	// Serial.print("EIMSK: ");
+	// Serial.println(EIMSK, HEX);
+
 	uint8_t state, bit, head;
 	uint16_t capture, target;
 	uint16_t offset, offset_overflow;
@@ -364,6 +442,10 @@ int AltSoftSerial::available(void)
 
 	head = rx_buffer_head;
 	tail = rx_buffer_tail;
+
+	Serial.print("Head: "); Serial.println(head);
+	Serial.print("Tail: "); Serial.println(tail);
+
 	if (head >= tail) return head - tail;
 	return RX_BUFFER_SIZE + head - tail;
 }

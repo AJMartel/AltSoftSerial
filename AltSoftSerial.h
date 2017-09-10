@@ -45,7 +45,7 @@
 
 
 
-
+// Timer 0 is used by millis(). So, we will not using that.
 
 // Teensy 2.0
 //
@@ -65,6 +65,7 @@
 // Arduino Uno, Duemilanove, LilyPad, etc
 #elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
   #define ALTSS_HAVE_TIMER1
+  // #define ALTSS_HAVE_TIMER2
 
 // Arduino Leonardo & Yun (from Cristian Maglie)
 #elif defined(ARDUINO_AVR_YUN) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega32U4__)
@@ -86,7 +87,11 @@
 #endif
 
 
-
+typedef enum {
+  RX_PIN_TYPE_ICP,
+  RX_PIN_TYPE_INT, // Ext interrupt
+  RX_PIN_TYPE_PCINT
+} eRxPinType;
 
 
 
@@ -149,7 +154,32 @@ private:
   volatile uint16_t *_OCRnA;  // Output compare register A
   volatile uint16_t *_OCRnB;  // Output compare register B
 
-  bool _useICP;
+  /* Registers used for INT0 or INT1. m represents 0 or 1 */
+ 
+
+  /* Registers and bitmask to be used if rx pin in INTx type */
+  // EICRA - to set interrupt capture on rising edge or falling edge
+  uint8_t _INTm;  // bitmask for bit in EICRA register. INT0 or INT1
+  // EIMSK
+  uint8_t _ISCm0; // bit for bit in EIMSK register. m = 0 or 1
+  uint8_t _ISCm1; // bit for bit in EMISK register. m = 0 or 1
+
+  /* Registers and bitmask to be used rx pin in PCINTxx type */
+  // PCICR - to enable or diable interrupt
+  uint8_t _PCIEx; // bitmask for bit in PCICR. x = 0, 1 or 2
+  volatile uint8_t *_PCMSKx ;// register to enable or disable interrupt. x = 0, 1, or 2
+  uint8_t _PCINTm; // bitmask for bit in PCMSKx register. m = 0 to 23 (except 15)
+
+  /* PCI0 generated from PCINT[7:0]
+     PCI1 generated from PCINT[14-8]  There is no pin PCINT15.
+     PCI2 generated from PCINT[23-16]  
+  // Registers used for PCI0, PCI1 or PCI2. m represents 0 to 23 expect 15 */
+  // PCICR // To enable or disable the interrupt
+  //   Bitmasks: PCIE0 for m: 7-0, PCIE1 for m: 14-8 and PCIE2 for m:23-15
+  // PCMISKx  // To enable or disable the interrupt
+  //   Bitmaks: PCINTm
+
+  eRxPinType _rxPinType;
 
 public:
 
@@ -169,31 +199,23 @@ public:
    *
    */
 
-  /**  input_rx_pin: ICP pin of the timer if useICP is true, other other INT pin
-    */
-	AltSoftSerial(uint8_t rx_pin,     // rx pin
-                uint8_t output_compare_A_pin,  // tx pin
-                bool useICP = true,         // true if rx is ICP pin
-                uint8_t timerNum = 1) { // to be used if rx is not ICP pin
+  /* Reception can happen on 
+        - ICP Pin
+        - INT Pin
+        - PCINT PIN  */
 
+  /**  output_compare_A_pin: tx pin */
+	AltSoftSerial(uint8_t output_compare_A_pin,  // tx pin
+                uint8_t timerNum) { // to be used if rx is not ICP pin
 
-    _input_capture_pin = rx_pin;
-    _output_compare_A_pin = output_compare_A_pin;
+    _input_capture_pin = 0;
     
-    #if defined(ALTSS_HAVE_TIMER0)
-      if(timerNum == 0) {
-        _TCCRnA = &TCCR0A; _COMnA1 = COM0A1; _COMnA0 = COM0A0;
-        _TCCRnB = &TCCR0B; _ICNCn = ICNC0; _CSn0 = CS00; _CSn1 = CS01; _CSn2 = CS02; _ICESn = ICES0;
-        _TIFRn = &TIFR0; _ICFn = ICF0; _OCFnA = OCF0A; _OCFnB = OCF0B;
-        _TIMSKn = &TIMSK0; _ICIEn = ICIE0; _OCIEnA = OCIE0A; _OCIEnB = OCIE0B;
-        _TCNTn = &TCNT0;
-        _ICRn = &ICR0;
-        _OCRnA = &OCR0A;
-        _OCRnB = &OCR0B;
-      }
-    // #endif
+    _output_compare_A_pin = output_compare_A_pin;
 
-    #elif defined(ALTSS_HAVE_TIMER1)
+    _rxPinType = RX_PIN_TYPE_ICP;
+    
+
+    #if defined(ALTSS_HAVE_TIMER1)
       if(timerNum == 1) {
         _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
         _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
@@ -203,10 +225,12 @@ public:
         _ICRn = &ICR1;
         _OCRnA = &OCR1A;
         _OCRnB = &OCR1B;
-      }
-    // #endif
 
-    #elif defined(ALTSS_HAVE_TIMER2)
+        // deduce type of pin
+      }
+    #endif
+
+    #if defined(ALTSS_HAVE_TIMER2)
       if(timerNum == 2) {
         _TCCRnA = &TCCR2A; _COMnA1 = COM2A1; _COMnA0 = COM2A0;
         _TCCRnB = &TCCR2B; _ICNCn = ICNC2; _CSn0 = CS20; _CSn1 = CS21; _CSn2 = CS22; _ICESn = ICES2;
@@ -217,13 +241,9 @@ public:
         _OCRnA = &OCR2A;
         _OCRnB = &OCR2B;
       }
-    #else
-      #error "Ha!"
     #endif
 
-
-    _useICP = useICP;
-    }
+  }
 
 	~AltSoftSerial() { end(); }
 
@@ -236,6 +256,21 @@ public:
 	int peek();
 	int read();
 	int available();
+
+  /* Sets INTx pin as rx pin. This function should be called before call to begin().
+   *   rx_pin: [IN] Arduino Pin to be set as rx */
+  void setICPPinAsRx(uint8_t rx_pin);
+
+  /* Sets INTx pin as rx pin. This function should be called before call to begin().
+   *  rx_pin: [IN] Arduino Pin to be set as rx
+   *  INT_pin_number: [IN] 0 for INT0 and 1 for INT1 */
+  void setINTPinAsRx(uint8_t rx_pin, uint8_t INT_pin_number);
+
+  /* Sets PCINTxx pin as rx pin. This function should be called before call to begin().
+   *  rx_pin: [IN] Arduino pin to set as rx
+   *  interrupt_number: [IN] Valid range is 0 to 23 corresponding to PCINT0 to PCINT23 (except 
+   *                         for PCINT15) */
+  void setPCINTPinAsRx(uint8_t rx_pin, uint8_t PCINT_pin_number);
 
   /* In older Arduino, flush() function flushed the input stream instead of output. */
 #if ARDUINO >= 100
@@ -256,7 +291,7 @@ public:
 
 	/* Following fxns are for drop-in compatibility with NewSoftSerial (now SoftwareSerial), rxPin & 
   txPin ignored. They do nothing. */
-	AltSoftSerial(uint8_t rxPin, uint8_t txPin, bool inverse = false) { }
+	// AltSoftSerial(uint8_t rxPin, uint8_t txPin, bool inverse = false) { }
 	bool listen() { return false; }
 	bool isListening() { return true; }
 	bool overflow() { bool r = timing_error; timing_error = false; return r; }
@@ -288,48 +323,61 @@ private:
   void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
   void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
   
+  /* Functions used for transmission */
   void CONFIG_MATCH_NORMAL()        { *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); }
   void CONFIG_MATCH_TOGGLE()        { *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); }
   void CONFIG_MATCH_CLEAR()         { *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0); }
   void CONFIG_MATCH_SET()           { *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0)); }
 
+  /* Functions used for reception */
   void CONFIG_CAPTURE_FALLING_EDGE()   { 
-      if(_useICP) *_TCCRnB &= ~(1<<_ICESn); 
-      else {
+      if(_rxPinType == RX_PIN_TYPE_ICP) 
+        *_TCCRnB &= ~(1<<_ICESn); 
+      else  if (_rxPinType == RX_PIN_TYPE_INT) { // PCINT or INT
           DISABLE_INT_INPUT_CAPTURE();
-          EICRA = (EICRA | (1<<ISC01)) & ~(1<<ISC00);
+          EICRA = ( (EICRA | (1<<_ISCm1)) & ~(1<<_ISCm0) );
           ENABLE_INT_INPUT_CAPTURE();
+      }
+      else if (_rxPinType == RX_PIN_TYPE_PCINT) {
+        // TODO: Fill this
       }
   }
 
   void CONFIG_CAPTURE_RISING_EDGE()    { 
-      if(_useICP) *_TCCRnB |= (1<<_ICESn); 
-      else {
+      if(_rxPinType == RX_PIN_TYPE_ICP) 
+        *_TCCRnB |= (1<<_ICESn); 
+      else if (_rxPinType == RX_PIN_TYPE_INT) {
           DISABLE_INT_INPUT_CAPTURE();
-          EICRA = EICRA | ((1<<ISC01) | (1<<ISC00));
+          EICRA = EICRA | ((1<<_ISCm1) | (1<<_ISCm0));
           ENABLE_INT_INPUT_CAPTURE();
+      }
+      else if (_rxPinType == RX_PIN_TYPE_PCINT) {
+
       }
   }
 
-  void ENABLE_INT_INPUT_CAPTURE()      { if(_useICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
-                                         else EIMSK = (1<<INT0);}
+  void ENABLE_INT_INPUT_CAPTURE()      { if(_rxPinType == RX_PIN_TYPE_ICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
+                                         else if (_rxPinType == RX_PIN_TYPE_INT) EIMSK |= (1<<_INTm);}
 
   void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
   void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
 
-  void DISABLE_INT_INPUT_CAPTURE()    { if(_useICP) *_TIMSKn &= ~(1<<_ICIEn); 
-                                        else EIMSK &= ~(1<<INT0); }
+  void DISABLE_INT_INPUT_CAPTURE()    { if(_rxPinType == RX_PIN_TYPE_ICP) *_TIMSKn &= ~(1<<_ICIEn); 
+                                        else if (_rxPinType == RX_PIN_TYPE_INT) EIMSK &= ~(1<<_INTm); }
 
   void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
+
   void DISABLE_INT_COMPARE_B()        { *_TIMSKn &= ~(1<<_OCIEnB); }
+  
   uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
 
-  uint16_t GET_INPUT_CAPTURE()        { if(_useICP) return *_ICRn; else return *_TCNTn;}
+  uint16_t GET_INPUT_CAPTURE()        { if(_rxPinType == RX_PIN_TYPE_ICP) return *_ICRn; else return *_TCNTn;}
 
   uint16_t GET_COMPARE_A()            { return *_OCRnA; }
   uint16_t GET_COMPARE_B()            { return *_OCRnB; }
+  
   void SET_COMPARE_A(uint16_t val)	{ *_OCRnA = (val); }
-    void SET_COMPARE_B(uint16_t val)	{ *_OCRnB = (val); }
+  void SET_COMPARE_B(uint16_t val)	{ *_OCRnB = (val); }
 };
 
 #endif // AltSoftSerial_h
