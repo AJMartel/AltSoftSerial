@@ -75,7 +75,7 @@ AltSoftSerial::AltSoftSerial(uint8_t rx_pin, uint8_t tx_pin) { // tx pin
 	  _useAForTx = (timer == TIMER1A);
 
 	  if(timer == TIMER1A || timer == TIMER1B) {
-	    _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
+	    _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0; _COMnB1 = COM1B1; _COMnB0 = COM1B0;
 	    _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
 	    _TIFRn = &TIFR1; _ICFn = ICF1; _OCFnA = OCF1A; _OCFnB = OCF1B;
 	    _TIMSKn = &TIMSK1; _ICIEn = ICIE1; _OCIEnA = OCIE1A; _OCIEnB = OCIE1B;

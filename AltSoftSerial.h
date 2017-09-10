@@ -129,6 +129,8 @@ private:
   volatile uint8_t *_TCCRnA;  // Timer/Counter control register A
   uint8_t _COMnA1;  // Compare Output Mode in TCCRnA register
   uint8_t _COMnA0;  // Compare Output Mode in TCCRnA register
+  uint8_t _COMnB1;  // Compare Output Mode in TCCRnA register
+  uint8_t _COMnB0;  // Compare Output Mode in TCCRnA register
 
   volatile uint8_t *_TCCRnB;  // Timer/Counter control register B
   uint8_t _ICNCn;   // Input capture noise cancel in TCCRnB register
@@ -183,28 +185,8 @@ private:
 
 public:
 
-  /* n can vary from 0 to 5. 
-     All .h files are in hardware/tools/avr/avr/include/avr
-     Single .h file corresponds to single processor
-     Run the given command in above folder to verify
-   * Bitmasks:
-   *    ICNCn - For given processor, for all n, value is same. 
-   *            To verify: $ for f in *.h; do grep --with-filename ICNC $f;  echo ""; done;
-   *
-   *    CSn0 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]0" *.h;
-   *    CSn1 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]1" *.h;
-        CSn2 - 0 for all processors for all n. To verify: $grep -E "(( )|($(printf '\t')))CS[0-5]2" *.h;
-
-        COMnA1 - For given processor, value CAN BE different for different timers
-   *
-   */
-
-  /* Reception can happen on 
-        - ICP Pin
-        - INT Pin
-        - PCINT PIN  */
-
-  /**  output_compare_A_pin: tx pin */
+  /**  rx_pin: [IN] ICP pin, INTx pin or PCINTxx pin 
+   *   tx pin: [IN] should be OCnA or OCnB pin */
 	AltSoftSerial(uint8_t rx_pin,
             uint8_t output_compare_A_pin);
 
@@ -275,10 +257,25 @@ private:
   void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
   
   /* Functions used for transmission */
-  void CONFIG_MATCH_NORMAL()        { *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); }
-  void CONFIG_MATCH_TOGGLE()        { *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); }
-  void CONFIG_MATCH_CLEAR()         { *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0); }
-  void CONFIG_MATCH_SET()           { *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0)); }
+  void CONFIG_MATCH_NORMAL()        { 
+    if( _useAForTx ) *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); 
+    else *_TCCRnA = *_TCCRnA & ~((1<<_COMnB1) | (1<<_COMnB0)); 
+  }
+
+  void CONFIG_MATCH_TOGGLE()        { 
+    if( _useAForTx )  *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); 
+    else  *_TCCRnA = (*_TCCRnA & ~(1<<_COMnB1)) | (1<<_COMnB0); 
+  }
+
+  void CONFIG_MATCH_CLEAR()         { 
+    if( _useAForTx )  *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0);
+    else *_TCCRnA = (*_TCCRnA | (1<<_COMnB1)) & ~(1<<_COMnB0);
+  }
+
+  void CONFIG_MATCH_SET() {
+    if( _useAForTx )  *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0));
+    else *_TCCRnA = *_TCCRnA | ((1<<_COMnB1) | (1<<_COMnB0)); 
+  }
 
   /* Functions used for reception */
   void CONFIG_CAPTURE_FALLING_EDGE()   { 
