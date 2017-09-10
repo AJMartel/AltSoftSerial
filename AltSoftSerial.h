@@ -65,7 +65,6 @@
 // Arduino Uno, Duemilanove, LilyPad, etc
 #elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
   #define ALTSS_HAVE_TIMER1
-  // #define ALTSS_HAVE_TIMER2
 
 // Arduino Leonardo & Yun (from Cristian Maglie)
 #elif defined(ARDUINO_AVR_YUN) || defined(ARDUINO_AVR_LEONARDO) || defined(__AVR_ATmega32U4__)
@@ -159,16 +158,16 @@ private:
 
   /* Registers and bitmask to be used if rx pin in INTx type */
   // EICRA - to set interrupt capture on rising edge or falling edge
-  uint8_t _INTm;  // bitmask for bit in EICRA register. INT0 or INT1
+  uint8_t _INTm;  // bit in EICRA register. INT0 or INT1
   // EIMSK
-  uint8_t _ISCm0; // bit for bit in EIMSK register. m = 0 or 1
-  uint8_t _ISCm1; // bit for bit in EMISK register. m = 0 or 1
+  uint8_t _ISCm0; // bit in EIMSK register. m = 0 or 1
+  uint8_t _ISCm1; // bit in EMISK register. m = 0 or 1
 
   /* Registers and bitmask to be used rx pin in PCINTxx type */
   // PCICR - to enable or diable interrupt
-  uint8_t _PCIEx; // bitmask for bit in PCICR. x = 0, 1 or 2
+  uint8_t _PCIEx; // bit in PCICR. x = 0, 1 or 2
   volatile uint8_t *_PCMSKx ;// register to enable or disable interrupt. x = 0, 1, or 2
-  uint8_t _PCINTm; // bitmask for bit in PCMSKx register. m = 0 to 23 (except 15)
+  uint8_t _PCINTm; // bit in PCMSKx register. m = 0 to 23 (except 15)
 
   /* PCI0 generated from PCINT[7:0]
      PCI1 generated from PCINT[14-8]  There is no pin PCINT15.
@@ -205,45 +204,8 @@ public:
         - PCINT PIN  */
 
   /**  output_compare_A_pin: tx pin */
-	AltSoftSerial(uint8_t output_compare_A_pin,  // tx pin
-                uint8_t timerNum) { // to be used if rx is not ICP pin
-
-    _input_capture_pin = 0;
-    
-    _output_compare_A_pin = output_compare_A_pin;
-
-    _rxPinType = RX_PIN_TYPE_ICP;
-    
-
-    #if defined(ALTSS_HAVE_TIMER1)
-      if(timerNum == 1) {
-        _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
-        _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
-        _TIFRn = &TIFR1; _ICFn = ICF1; _OCFnA = OCF1A; _OCFnB = OCF1B;
-        _TIMSKn = &TIMSK1; _ICIEn = ICIE1; _OCIEnA = OCIE1A; _OCIEnB = OCIE1B;
-        _TCNTn = &TCNT1;
-        _ICRn = &ICR1;
-        _OCRnA = &OCR1A;
-        _OCRnB = &OCR1B;
-
-        // deduce type of pin
-      }
-    #endif
-
-    #if defined(ALTSS_HAVE_TIMER2)
-      if(timerNum == 2) {
-        _TCCRnA = &TCCR2A; _COMnA1 = COM2A1; _COMnA0 = COM2A0;
-        _TCCRnB = &TCCR2B; _ICNCn = ICNC2; _CSn0 = CS20; _CSn1 = CS21; _CSn2 = CS22; _ICESn = ICES2;
-        _TIFRn = &TIFR2; _ICFn = ICF2; _OCFnA = OCF2A; _OCFnB = OCF2B;
-        _TIMSKn = &TIMSK2; _ICIEn = ICIE2; _OCIEnA = OCIE2A; _OCIEnB = OCIE2B;
-        _TCNTn = &TCNT2;
-        _ICRn = &ICR2;
-        _OCRnA = &OCR2A;
-        _OCRnB = &OCR2B;
-      }
-    #endif
-
-  }
+	AltSoftSerial(uint8_t rx_pin,
+            uint8_t output_compare_A_pin);
 
 	~AltSoftSerial() { end(); }
 
@@ -264,13 +226,13 @@ public:
   /* Sets INTx pin as rx pin. This function should be called before call to begin().
    *  rx_pin: [IN] Arduino Pin to be set as rx
    *  INT_pin_number: [IN] 0 for INT0 and 1 for INT1 */
-  void setINTPinAsRx(uint8_t rx_pin, uint8_t INT_pin_number);
+  void setINTPinAsRx(uint8_t rx_pin);
 
   /* Sets PCINTxx pin as rx pin. This function should be called before call to begin().
    *  rx_pin: [IN] Arduino pin to set as rx
    *  interrupt_number: [IN] Valid range is 0 to 23 corresponding to PCINT0 to PCINT23 (except 
    *                         for PCINT15) */
-  void setPCINTPinAsRx(uint8_t rx_pin, uint8_t PCINT_pin_number);
+  void setPCINTPinAsRx(uint8_t rx_pin);
 
   /* In older Arduino, flush() function flushed the input stream instead of output. */
 #if ARDUINO >= 100
@@ -339,7 +301,8 @@ private:
           ENABLE_INT_INPUT_CAPTURE();
       }
       else if (_rxPinType == RX_PIN_TYPE_PCINT) {
-        // TODO: Fill this
+        // PCINT cannot be set for only Falling edge or rising edge
+        // No need to set any. Next edge would be what is expected.
       }
   }
 
@@ -352,18 +315,34 @@ private:
           ENABLE_INT_INPUT_CAPTURE();
       }
       else if (_rxPinType == RX_PIN_TYPE_PCINT) {
-
+        // PCINT cannot be set for only Falling edge or rising edge
+        // No need to set any. Next edge would be what is expected.
       }
   }
 
-  void ENABLE_INT_INPUT_CAPTURE()      { if(_rxPinType == RX_PIN_TYPE_ICP) *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
-                                         else if (_rxPinType == RX_PIN_TYPE_INT) EIMSK |= (1<<_INTm);}
+  void ENABLE_INT_INPUT_CAPTURE() { 
+    if(_rxPinType == RX_PIN_TYPE_ICP) 
+        *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
+     else if (_rxPinType == RX_PIN_TYPE_INT) 
+        EIMSK |= (1<<_INTm);
+      else if(_rxPinType == RX_PIN_TYPE_PCINT) {
+        PCICR |= (1 << _PCIEx);
+        *_PCMSKx |= (1 << _PCINTm);
+      }
+    }
 
   void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
   void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
 
-  void DISABLE_INT_INPUT_CAPTURE()    { if(_rxPinType == RX_PIN_TYPE_ICP) *_TIMSKn &= ~(1<<_ICIEn); 
-                                        else if (_rxPinType == RX_PIN_TYPE_INT) EIMSK &= ~(1<<_INTm); }
+  void DISABLE_INT_INPUT_CAPTURE()  { 
+      if(_rxPinType == RX_PIN_TYPE_ICP) 
+          *_TIMSKn &= ~(1<<_ICIEn); 
+      else if (_rxPinType == RX_PIN_TYPE_INT) 
+          EIMSK &= ~(1<<_INTm); 
+      else if(_rxPinType == RX_PIN_TYPE_PCINT) {
+          *_PCMSKx &= ~(1 << _PCINTm);
+      }
+  }
 
   void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
 

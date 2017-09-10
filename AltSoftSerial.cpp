@@ -47,13 +47,47 @@ bool AltSoftSerial::timing_error=false;
 
 #define MAX_COUNTS_PER_BIT  6241  // 65536 / 10.5
 
-void AltSoftSerial::setICPPinAsRx(uint8_t rx_pin) {
+
+AltSoftSerial::AltSoftSerial(uint8_t rx_pin,
+            uint8_t output_compare_A_pin) { // tx pin
 
 	_input_capture_pin = rx_pin;
-	_rxPinType = RX_PIN_TYPE_ICP;
+	_output_compare_A_pin = output_compare_A_pin;
+
+	// Check if it is external interrupt
+	if(digitalPinToInterrupt(rx_pin) != NOT_AN_INTERRUPT) {
+		_rxPinType = RX_PIN_TYPE_INT;
+		setINTPinAsRx(rx_pin);
+	}
+	else if (digitalPinToPCMSK(rx_pin) != 0) {	// check if it is PCINT
+		_rxPinType = RX_PIN_TYPE_PCINT;
+		setPCINTPinAsRx(rx_pin);
+	}
+	else { // if it ICP Pin
+	    _rxPinType = RX_PIN_TYPE_ICP;
+	}
+	
+	// Timer 0 is used by millis(). So, not using it for AltSoftSerial.
+
+	uint8_t timer = digitalPinToTimer(output_compare_A_pin);
+
+	#if defined(ALTSS_HAVE_TIMER1)
+	  if(timer == TIMER1A) {
+	    _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
+	    _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
+	    _TIFRn = &TIFR1; _ICFn = ICF1; _OCFnA = OCF1A; _OCFnB = OCF1B;
+	    _TIMSKn = &TIMSK1; _ICIEn = ICIE1; _OCIEnA = OCIE1A; _OCIEnB = OCIE1B;
+	    _TCNTn = &TCNT1;
+	    _ICRn = &ICR1;
+	    _OCRnA = &OCR1A;
+	    _OCRnB = &OCR1B;
+	  }
+	#endif
 }
 
-void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin, uint8_t INT_pin_number) {
+void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin) {
+
+	uint8_t INT_pin_number = digitalPinToInterrupt(rx_pin);
 
 	if(INT_pin_number == 0) {
 		_INTm = INT0;
@@ -71,47 +105,11 @@ void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin, uint8_t INT_pin_number) {
 	_rxPinType = RX_PIN_TYPE_INT;
 }
 
-void AltSoftSerial::setPCINTPinAsRx(uint8_t rx_pin, uint8_t PCINT_pin_number) {
+void AltSoftSerial::setPCINTPinAsRx(uint8_t rx_pin) {
 
-	switch(PCINT_pin_number) {
-		case 0: _PCINTm = 0; break;
-		case 1: _PCINTm = 1; break;
-		case 2: _PCINTm = 2; break;
-		case 3: _PCINTm = 3; break;
-		case 4: _PCINTm = 4; break;
-		case 5: _PCINTm = 5; break;
-		case 6: _PCINTm = 6; break;
-		case 7: _PCINTm = 7; break;
-		case 8: _PCINTm = 8; break;
-		case 9: _PCINTm = 9; break;
-		case 10: _PCINTm = 10; break;
-		case 11: _PCINTm = 11; break;
-		case 12: _PCINTm = 12; break;
-		case 13: _PCINTm = 13; break;
-		case 14: _PCINTm = 14; break;
-		case 16: _PCINTm = 16; break; // PCINT15 missed intentionally
-		case 17: _PCINTm = 17; break;
-		case 18: _PCINTm = 18; break;
-		case 19: _PCINTm = 19; break;
-		case 20: _PCINTm = 20; break;
-		case 21: _PCINTm = 21; break;
-		case 22: _PCINTm = 22; break;
-		case 23: _PCINTm = 23; break;
-		default: return; break;
-	}
-
-	if(PCINT_pin_number <= 7) {
-		_PCIEx = PCIE0;
-		_PCMSKx = &PCMSK0;
-	}
-	else if(PCINT_pin_number <=14) {
-		_PCIEx = PCIE1;
-		_PCMSKx = &PCMSK1;
-	}
-	else {
-		_PCIEx = PCIE2;
-		_PCMSKx = &PCMSK2;
-	}
+	_PCMSKx = digitalPinToPCMSK(rx_pin);
+	_PCINTm = digitalPinToPCMSKbit(rx_pin);
+	_PCIEx = digitalPinToPCICRbit(rx_pin);
 
 	_input_capture_pin = rx_pin;
 	_rxPinType = RX_PIN_TYPE_PCINT;
@@ -165,8 +163,8 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 	tx_state = 0;
 	tx_buffer_head = 0;
 	tx_buffer_tail = 0;
-	CONFIG_CAPTURE_FALLING_EDGE()
-;	ENABLE_INT_INPUT_CAPTURE();
+	CONFIG_CAPTURE_FALLING_EDGE();	
+	ENABLE_INT_INPUT_CAPTURE();
 }
 
 void AltSoftSerial::end(void)
