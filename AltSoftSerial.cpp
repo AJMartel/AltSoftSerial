@@ -48,11 +48,10 @@ bool AltSoftSerial::timing_error=false;
 #define MAX_COUNTS_PER_BIT  6241  // 65536 / 10.5
 
 
-AltSoftSerial::AltSoftSerial(uint8_t rx_pin,
-            uint8_t output_compare_A_pin) { // tx pin
+AltSoftSerial::AltSoftSerial(uint8_t rx_pin, uint8_t tx_pin) { // tx pin
 
 	_input_capture_pin = rx_pin;
-	_output_compare_A_pin = output_compare_A_pin;
+	_output_compare_A_pin = tx_pin;
 
 	// Check if it is external interrupt
 	if(digitalPinToInterrupt(rx_pin) != NOT_AN_INTERRUPT) {
@@ -63,16 +62,19 @@ AltSoftSerial::AltSoftSerial(uint8_t rx_pin,
 		_rxPinType = RX_PIN_TYPE_PCINT;
 		setPCINTPinAsRx(rx_pin);
 	}
-	else { // if it ICP Pin
+	else { // if it ICP Pin  // TODO: ICP pin can be PCINT pin also. So, do this test before PCINT
 	    _rxPinType = RX_PIN_TYPE_ICP;
 	}
 	
 	// Timer 0 is used by millis(). So, not using it for AltSoftSerial.
 
-	uint8_t timer = digitalPinToTimer(output_compare_A_pin);
+	uint8_t timer = digitalPinToTimer(tx_pin);
 
 	#if defined(ALTSS_HAVE_TIMER1)
-	  if(timer == TIMER1A) {
+
+	  _useAForTx = (timer == TIMER1A);
+
+	  if(timer == TIMER1A || timer == TIMER1B) {
 	    _TCCRnA = &TCCR1A; _COMnA1 = COM1A1; _COMnA0 = COM1A0;
 	    _TCCRnB = &TCCR1B; _ICNCn = ICNC1; _CSn0 = CS10; _CSn1 = CS11; _CSn2 = CS12; _ICESn = ICES1;
 	    _TIFRn = &TIFR1; _ICFn = ICF1; _OCFnA = OCF1A; _OCFnB = OCF1B;
@@ -85,6 +87,9 @@ AltSoftSerial::AltSoftSerial(uint8_t rx_pin,
 	#endif
 }
 
+/* Sets INTx pin as rx pin. This function should be called before call to begin().
+   *  rx_pin: [IN] Arduino Pin to be set as rx
+   *  INT_pin_number: [IN] 0 for INT0 and 1 for INT1 */
 void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin) {
 
 	uint8_t INT_pin_number = digitalPinToInterrupt(rx_pin);
@@ -99,12 +104,17 @@ void AltSoftSerial::setINTPinAsRx(uint8_t rx_pin) {
 		_ISCm0 = ISC10;
 		_ISCm1 = ISC11;
 	}
-	else return;
+	else 
+		return;
 
 	_input_capture_pin = rx_pin;
 	_rxPinType = RX_PIN_TYPE_INT;
 }
 
+/* Sets PCINTxx pin as rx pin. This function should be called before call to begin().
+*  rx_pin: [IN] Arduino pin to set as rx
+*  interrupt_number: [IN] Valid range is 0 to 23 corresponding to PCINT0 to PCINT23 (except 
+*                         for PCINT15) */
 void AltSoftSerial::setPCINTPinAsRx(uint8_t rx_pin) {
 
 	_PCMSKx = digitalPinToPCMSK(rx_pin);
@@ -169,11 +179,11 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 
 void AltSoftSerial::end(void)
 {
-	DISABLE_INT_COMPARE_B();
+	DISABLE_INT_COMPARE_RX();
 	DISABLE_INT_INPUT_CAPTURE();
 	flushInput();
 	flushOutput();
-	DISABLE_INT_COMPARE_A();
+	DISABLE_INT_COMPARE_TX();
 	// TODO: restore timer to original settings?
 }
 
@@ -205,9 +215,9 @@ void AltSoftSerial::writeByte(uint8_t b)
 		tx_state = 1;
 		tx_byte = b;
 		tx_bit = 0;		// Set next bit to be transmitted as low (start bit)
-		ENABLE_INT_COMPARE_A();
+		ENABLE_INT_COMPARE_TX();
 		CONFIG_MATCH_CLEAR();
-		SET_COMPARE_A(GET_TIMER_COUNT() + 16);
+		SET_COMPARE_TX(GET_TIMER_COUNT() + 16);
 	}
 	SREG = intr_state;
 }
@@ -222,7 +232,7 @@ capture B interrupt (lowest priority)  */
 	1. Start of first data bit
 	2. Toggling of tx pin (except for start of first data bit)
 	3. End of 2nd stop bit */
-void AltSoftSerial::compareAInterrupt_isr()
+void AltSoftSerial::compareInterrupt_tx_isr()
 {
 	uint8_t state, byte, bit, head, tail;
 	uint16_t target; // value of timer when tx pin has to be toggled
@@ -231,7 +241,7 @@ void AltSoftSerial::compareAInterrupt_isr()
 	state = tx_state;  // the number of bits already transmitted
 	byte = tx_byte;    // the byte to be transmitted
 
-	target = GET_COMPARE_A();  // note down the timer value when this isr was invoked
+	target = GET_COMPARE_TX();  // note down the timer value when this isr was invoked
 
 	/* 1. Find the next bit (data bit or stop bit) that is different from current bit.
 	   2. Get the timer value when the tx pin has to be toggled.
@@ -259,7 +269,7 @@ void AltSoftSerial::compareAInterrupt_isr()
 			} else {
 				CONFIG_MATCH_CLEAR(); // set tx pin to low when timer value matches OCRA value
 			}
-			SET_COMPARE_A(target); 
+			SET_COMPARE_TX(target); 
 			tx_bit = bit;
 			tx_byte = byte;
 			tx_state = state;
@@ -280,11 +290,11 @@ void AltSoftSerial::compareAInterrupt_isr()
 		if (state == 10) {
 			// Wait for final stop bit to finish
 			tx_state = 11;
-			SET_COMPARE_A(target + ticks_per_bit);
+			SET_COMPARE_TX(target + ticks_per_bit);
 		} else {
 			tx_state = 0;
 			CONFIG_MATCH_NORMAL();   // do nothing on output pin on compare match
-			DISABLE_INT_COMPARE_A();
+			DISABLE_INT_COMPARE_TX();
 		}
 	} else {
 		if (++tail >= TX_BUFFER_SIZE) tail = 0;
@@ -293,9 +303,9 @@ void AltSoftSerial::compareAInterrupt_isr()
 		tx_bit = 0; // start bit
 		CONFIG_MATCH_CLEAR();
 		if (state == 10)
-			SET_COMPARE_A(target + ticks_per_bit);  // wait for stop bit com finish
+			SET_COMPARE_TX(target + ticks_per_bit);  // wait for stop bit com finish
 		else
-			SET_COMPARE_A(GET_TIMER_COUNT() + 16);
+			SET_COMPARE_TX(GET_TIMER_COUNT() + 16);
 		tx_state = 1;
 		// TODO: how to detect timing_error?
 	}
@@ -345,8 +355,8 @@ void AltSoftSerial::captureInterrupt_isr()
 	if (state == 0) { // start of start bit
 		if (!bit) {
 			uint16_t end = capture + rx_stop_ticks;
-			SET_COMPARE_B(end);
-			ENABLE_INT_COMPARE_B();
+			SET_COMPARE_RX(end);
+			ENABLE_INT_COMPARE_RX();
 			rx_target = capture + ticks_per_bit + ticks_per_bit/2; // middle of 1st data bit
 			rx_state = 1;
 		}
@@ -360,7 +370,7 @@ void AltSoftSerial::captureInterrupt_isr()
 			target += ticks_per_bit;
 			state++;
 			if (state >= 9) {
-				DISABLE_INT_COMPARE_B();
+				DISABLE_INT_COMPARE_RX();
 				head = rx_buffer_head + 1;
 				if (head >= RX_BUFFER_SIZE) head = 0;
 				if (head != rx_buffer_tail) {
@@ -380,11 +390,11 @@ void AltSoftSerial::captureInterrupt_isr()
 }
 
 /* This function is called at start of stop bit if 8th data bit is not 1 */
-void AltSoftSerial::compareBInterrupt_isr()
+void AltSoftSerial::compareInterrupt_rx_isr()
 {
 	uint8_t head, state, bit;
 
-	DISABLE_INT_COMPARE_B();
+	DISABLE_INT_COMPARE_RX();
 	CONFIG_CAPTURE_FALLING_EDGE();
 	state = rx_state;
 	bit = rx_bit ^ 0x80; // invert the rx_bit

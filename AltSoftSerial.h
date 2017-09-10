@@ -178,6 +178,7 @@ private:
   // PCMISKx  // To enable or disable the interrupt
   //   Bitmaks: PCINTm
 
+  bool _useAForTx; // If true, use TimernA for Tx , else use TimernB for Tx
   eRxPinType _rxPinType;
 
 public:
@@ -219,21 +220,6 @@ public:
 	int read();
 	int available();
 
-  /* Sets INTx pin as rx pin. This function should be called before call to begin().
-   *   rx_pin: [IN] Arduino Pin to be set as rx */
-  void setICPPinAsRx(uint8_t rx_pin);
-
-  /* Sets INTx pin as rx pin. This function should be called before call to begin().
-   *  rx_pin: [IN] Arduino Pin to be set as rx
-   *  INT_pin_number: [IN] 0 for INT0 and 1 for INT1 */
-  void setINTPinAsRx(uint8_t rx_pin);
-
-  /* Sets PCINTxx pin as rx pin. This function should be called before call to begin().
-   *  rx_pin: [IN] Arduino pin to set as rx
-   *  interrupt_number: [IN] Valid range is 0 to 23 corresponding to PCINT0 to PCINT23 (except 
-   *                         for PCINT15) */
-  void setPCINTPinAsRx(uint8_t rx_pin);
-
   /* In older Arduino, flush() function flushed the input stream instead of output. */
 #if ARDUINO >= 100
 	size_t write(uint8_t byte) { writeByte(byte); return 1; }
@@ -268,18 +254,21 @@ public:
   are public so that they can be called from ISR (see file AltSoftSerial1.cpp) */
 
   /* Invoked when Output Compare A interrupt is generated. Used for transmission. It is called  */
-	void compareAInterrupt_isr();
+	void compareInterrupt_tx_isr();
 
   /* Used for reception */
 	void captureInterrupt_isr();
 
   /* Invoked when Output Compare B interrupt is generated. Used for reception. */
-	void compareBInterrupt_isr();
+	void compareInterrupt_rx_isr();
 
 private:
 	void init(uint32_t cycles_per_bit);
-	void writeByte(uint8_t byte);
 
+  void setINTPinAsRx(uint8_t rx_pin);
+  void setPCINTPinAsRx(uint8_t rx_pin);
+
+	void writeByte(uint8_t byte);
 
   void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
   void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
@@ -331,8 +320,15 @@ private:
       }
     }
 
-  void ENABLE_INT_COMPARE_A()    { *_TIFRn = (1<<_OCFnA), *_TIMSKn |= (1<<_OCIEnA); }
-  void ENABLE_INT_COMPARE_B()    { *_TIFRn = (1<<_OCFnB), *_TIMSKn |= (1<<_OCIEnB); }
+  void ENABLE_INT_COMPARE_TX()    { 
+      *_TIFRn |=  ( _useAForTx ? (1<<_OCFnA) : (1<<_OCFnB) );
+      *_TIMSKn |= ( _useAForTx ? (1<<_OCIEnA) : (1<< _OCIEnB) );
+  }
+
+  void ENABLE_INT_COMPARE_RX()    { 
+      *_TIFRn |=  ( _useAForTx ? (1<<_OCFnB) : (1<<_OCFnA) );
+      *_TIMSKn |= ( _useAForTx ? (1<<_OCIEnB) : (1<< _OCIEnA) );
+  }
 
   void DISABLE_INT_INPUT_CAPTURE()  { 
       if(_rxPinType == RX_PIN_TYPE_ICP) 
@@ -344,19 +340,33 @@ private:
       }
   }
 
-  void DISABLE_INT_COMPARE_A()        { *_TIMSKn &= ~(1<<_OCIEnA); }
+  void DISABLE_INT_COMPARE_TX() { 
+    *_TIMSKn &= ( _useAForTx ? ~(1<<_OCIEnA) : ~(1<<_OCIEnB) ); 
+  }
 
-  void DISABLE_INT_COMPARE_B()        { *_TIMSKn &= ~(1<<_OCIEnB); }
+  void DISABLE_INT_COMPARE_RX() { 
+    *_TIMSKn &= ( _useAForTx ? ~(1<<_OCIEnB) : ~(1<<_OCIEnA) ); 
+  }
   
   uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
 
   uint16_t GET_INPUT_CAPTURE()        { if(_rxPinType == RX_PIN_TYPE_ICP) return *_ICRn; else return *_TCNTn;}
 
-  uint16_t GET_COMPARE_A()            { return *_OCRnA; }
-  uint16_t GET_COMPARE_B()            { return *_OCRnB; }
+  uint16_t GET_COMPARE_TX()            { return _useAForTx ? *_OCRnA : *_OCRnB; }
+  uint16_t GET_COMPARE_RX()            { return _useAForTx ? *_OCRnB : *_OCRnA; }
   
-  void SET_COMPARE_A(uint16_t val)	{ *_OCRnA = (val); }
-  void SET_COMPARE_B(uint16_t val)	{ *_OCRnB = (val); }
+  void SET_COMPARE_TX(uint16_t val)	{ 
+    if( _useAForTx )
+      *_OCRnA = val; 
+    else
+      *_OCRnB = val;
+  }
+  void SET_COMPARE_RX(uint16_t val)	{     
+    if( _useAForTx )
+      *_OCRnB = val; 
+    else
+      *_OCRnA = val;
+  }
 };
 
 #endif // AltSoftSerial_h
