@@ -173,6 +173,7 @@ void AltSoftSerial::init(uint32_t cycles_per_bit)
 	tx_state = 0;
 	tx_buffer_head = 0;
 	tx_buffer_tail = 0;
+
 	CONFIG_CAPTURE_FALLING_EDGE();	
 	ENABLE_INT_INPUT_CAPTURE();
 }
@@ -215,9 +216,10 @@ void AltSoftSerial::writeByte(uint8_t b)
 		tx_state = 1;
 		tx_byte = b;
 		tx_bit = 0;		// Set next bit to be transmitted as low (start bit)
-		ENABLE_INT_COMPARE_TX();
+
 		CONFIG_MATCH_CLEAR();
 		SET_COMPARE_TX(GET_TIMER_COUNT() + 16);
+		ENABLE_INT_COMPARE_TX();
 	}
 	SREG = intr_state;
 }
@@ -450,9 +452,6 @@ int AltSoftSerial::available(void)
 
 	head = rx_buffer_head;
 	tail = rx_buffer_tail;
-
-	Serial.print("Head: "); Serial.println(head);
-	Serial.print("Tail: "); Serial.println(tail);
 
 	if (head >= tail) return head - tail;
 	return RX_BUFFER_SIZE + head - tail;

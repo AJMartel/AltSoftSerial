@@ -39,10 +39,16 @@
 #define ALTSS_BASE_FREQ F_CPU
 #endif
 
-#define TX_BUFFER_SIZE 68
+// #define TX_BUFFER_SIZE 68
+#define TX_BUFFER_SIZE 256
 #define RX_BUFFER_SIZE 80
 
 
+/* Options for ISR
+      ISRs are needed for PCINT, INTx and ICP (for each timer)
+
+      3 for PCINT, 2 for INTx and 1 for ICP (for) 
+ */
 
 
 // Timer 0 is used by millis(). So, we will not using that.
@@ -252,33 +258,35 @@ private:
 
 	void writeByte(uint8_t byte);
 
-  void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
-  void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
+  inline void CONFIG_TIMER_NOPRESCALE()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn0); }
+  inline void CONFIG_TIMER_PRESCALE_8()    { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn1); }
   void CONFIG_TIMER_PRESCALE_256()  { *_TIMSKn = 0, *_TCCRnA = 0, *_TCCRnB = (1<<_ICNCn) | (1<<_CSn2); }
   
   /* Functions used for transmission */
-  void CONFIG_MATCH_NORMAL()        { 
+  inline void CONFIG_MATCH_NORMAL()        { 
     if( _useAForTx ) *_TCCRnA = *_TCCRnA & ~((1<<_COMnA1) | (1<<_COMnA0)); 
     else *_TCCRnA = *_TCCRnA & ~((1<<_COMnB1) | (1<<_COMnB0)); 
   }
 
-  void CONFIG_MATCH_TOGGLE()        { 
+  inline void CONFIG_MATCH_TOGGLE()        { 
     if( _useAForTx )  *_TCCRnA = (*_TCCRnA & ~(1<<_COMnA1)) | (1<<_COMnA0); 
     else  *_TCCRnA = (*_TCCRnA & ~(1<<_COMnB1)) | (1<<_COMnB0); 
   }
 
-  void CONFIG_MATCH_CLEAR()         { 
+  inline void CONFIG_MATCH_CLEAR()         { 
+
     if( _useAForTx )  *_TCCRnA = (*_TCCRnA | (1<<_COMnA1)) & ~(1<<_COMnA0);
-    else *_TCCRnA = (*_TCCRnA | (1<<_COMnB1)) & ~(1<<_COMnB0);
+    else
+      *_TCCRnA = (*_TCCRnA | (1<<_COMnB1)) & ~(1<<_COMnB0);
   }
 
-  void CONFIG_MATCH_SET() {
+  inline void CONFIG_MATCH_SET() {
     if( _useAForTx )  *_TCCRnA = *_TCCRnA | ((1<<_COMnA1) | (1<<_COMnA0));
     else *_TCCRnA = *_TCCRnA | ((1<<_COMnB1) | (1<<_COMnB0)); 
   }
 
   /* Functions used for reception */
-  void CONFIG_CAPTURE_FALLING_EDGE()   { 
+  inline void CONFIG_CAPTURE_FALLING_EDGE()   { 
       if(_rxPinType == RX_PIN_TYPE_ICP) 
         *_TCCRnB &= ~(1<<_ICESn); 
       else  if (_rxPinType == RX_PIN_TYPE_INT) { // PCINT or INT
@@ -292,7 +300,7 @@ private:
       }
   }
 
-  void CONFIG_CAPTURE_RISING_EDGE()    { 
+  inline void CONFIG_CAPTURE_RISING_EDGE()    { 
       if(_rxPinType == RX_PIN_TYPE_ICP) 
         *_TCCRnB |= (1<<_ICESn); 
       else if (_rxPinType == RX_PIN_TYPE_INT) {
@@ -306,28 +314,31 @@ private:
       }
   }
 
-  void ENABLE_INT_INPUT_CAPTURE() { 
-    if(_rxPinType == RX_PIN_TYPE_ICP) 
+  inline void ENABLE_INT_INPUT_CAPTURE() { 
+
+    if(_rxPinType == RX_PIN_TYPE_ICP) {
         *_TIFRn = (1<<_ICFn), *_TIMSKn = (1<<_ICIEn); 
-     else if (_rxPinType == RX_PIN_TYPE_INT) 
+    }
+    else if (_rxPinType == RX_PIN_TYPE_INT) {
         EIMSK |= (1<<_INTm);
-      else if(_rxPinType == RX_PIN_TYPE_PCINT) {
+    }
+    else if(_rxPinType == RX_PIN_TYPE_PCINT) {
         PCICR |= (1 << _PCIEx);
         *_PCMSKx |= (1 << _PCINTm);
-      }
     }
+  }
 
-  void ENABLE_INT_COMPARE_TX()    { 
+  inline void ENABLE_INT_COMPARE_TX()    { 
       *_TIFRn |=  ( _useAForTx ? (1<<_OCFnA) : (1<<_OCFnB) );
       *_TIMSKn |= ( _useAForTx ? (1<<_OCIEnA) : (1<< _OCIEnB) );
   }
 
-  void ENABLE_INT_COMPARE_RX()    { 
+  inline void ENABLE_INT_COMPARE_RX()    { 
       *_TIFRn |=  ( _useAForTx ? (1<<_OCFnB) : (1<<_OCFnA) );
       *_TIMSKn |= ( _useAForTx ? (1<<_OCIEnB) : (1<< _OCIEnA) );
   }
 
-  void DISABLE_INT_INPUT_CAPTURE()  { 
+  inline void DISABLE_INT_INPUT_CAPTURE()  { 
       if(_rxPinType == RX_PIN_TYPE_ICP) 
           *_TIMSKn &= ~(1<<_ICIEn); 
       else if (_rxPinType == RX_PIN_TYPE_INT) 
@@ -337,28 +348,28 @@ private:
       }
   }
 
-  void DISABLE_INT_COMPARE_TX() { 
+  inline void DISABLE_INT_COMPARE_TX() { 
     *_TIMSKn &= ( _useAForTx ? ~(1<<_OCIEnA) : ~(1<<_OCIEnB) ); 
   }
 
-  void DISABLE_INT_COMPARE_RX() { 
+  inline void DISABLE_INT_COMPARE_RX() { 
     *_TIMSKn &= ( _useAForTx ? ~(1<<_OCIEnB) : ~(1<<_OCIEnA) ); 
   }
   
-  uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
+  inline uint16_t GET_TIMER_COUNT()          { return *_TCNTn; }
 
-  uint16_t GET_INPUT_CAPTURE()        { if(_rxPinType == RX_PIN_TYPE_ICP) return *_ICRn; else return *_TCNTn;}
+  inline uint16_t GET_INPUT_CAPTURE()        { if(_rxPinType == RX_PIN_TYPE_ICP) return *_ICRn; else return *_TCNTn;}
 
-  uint16_t GET_COMPARE_TX()            { return _useAForTx ? *_OCRnA : *_OCRnB; }
-  uint16_t GET_COMPARE_RX()            { return _useAForTx ? *_OCRnB : *_OCRnA; }
+  inline uint16_t GET_COMPARE_TX()            { return _useAForTx ? *_OCRnA : *_OCRnB; }
+  inline uint16_t GET_COMPARE_RX()            { return _useAForTx ? *_OCRnB : *_OCRnA; }
   
-  void SET_COMPARE_TX(uint16_t val)	{ 
+  inline void SET_COMPARE_TX(uint16_t val)	{ 
     if( _useAForTx )
       *_OCRnA = val; 
     else
       *_OCRnB = val;
   }
-  void SET_COMPARE_RX(uint16_t val)	{     
+  inline void SET_COMPARE_RX(uint16_t val)	{     
     if( _useAForTx )
       *_OCRnB = val; 
     else
